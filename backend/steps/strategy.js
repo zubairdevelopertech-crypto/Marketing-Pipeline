@@ -1,6 +1,11 @@
 const { callClaudeJSON } = require('../utils/claude');
-const { saveBriefs } = require('../utils/db');
+const { saveBriefs, getBriefsAsync } = require('../utils/db');
 const path = require('path');
+
+function briefMergeKey(b) {
+  if (!b || !b.format_id || !b.version) return null;
+  return `${b.format_id}-VERSION-${b.version}`;
+}
 
 async function runStrategy(clientDir, context, formats, onProgress) {
   onProgress({ step: 'strategy', status: 'running', message: `📋 Generating content strategy for ${formats.length * 2} briefs (${formats.length} formats × 2 angles)...` });
@@ -94,7 +99,23 @@ Generate a complete content strategy brief. Return ONLY valid JSON:
   }
 
   const clientSlug = path.basename(clientDir);
-  await saveBriefs(clientSlug, briefs);
+  // Merge with previous runs so partial format runs (e.g. 1–2 then 3–4) keep all briefs on disk + Supabase
+  const prev = (await getBriefsAsync(clientSlug)) || [];
+  const map = new Map();
+  for (const b of prev) {
+    const k = briefMergeKey(b);
+    if (k) map.set(k, b);
+  }
+  for (const b of briefs) {
+    const k = briefMergeKey(b);
+    if (k) map.set(k, b);
+  }
+  const merged = Array.from(map.values()).sort((a, b) => {
+    const c = (a.format_id || '').localeCompare(b.format_id || '', undefined, { numeric: true });
+    if (c !== 0) return c;
+    return String(a.version || '').localeCompare(String(b.version || ''));
+  });
+  await saveBriefs(clientSlug, merged);
 
   const successful = briefs.filter(b => !b.error).length;
   onProgress({

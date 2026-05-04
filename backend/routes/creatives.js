@@ -5,7 +5,10 @@ const fs = require('fs');
 const archiver = require('archiver');
 
 const CLIENTS_DIR = path.join(__dirname, '..', 'clients');
-const { getManifestForApi, getReviewForApi, normalizeCreativeImageUrl, getImageFromStorage } = require('../utils/db');
+const {
+  getManifestForApi, getReviewForApi, normalizeCreativeImageUrl, getImageFromStorage,
+  getBriefsAsync, getManifestAsync
+} = require('../utils/db');
 
 // Serve generated image — filesystem first, Supabase Storage fallback
 router.get('/:client/images/:filename', async (req, res) => {
@@ -109,11 +112,45 @@ router.get('/:client/iterations/:num', (req, res) => {
   res.json({ iterations: data.iterations || [], analysis: data });
 });
 
-// Export content briefs as JSON download
-router.get('/:client/export/briefs', (req, res) => {
-  const briefsPath = path.join(CLIENTS_DIR, req.params.client, 'output', 'content_briefs.json');
-  if (!fs.existsSync(briefsPath)) return res.status(404).json({ error: 'No briefs found. Run the Strategy step first.' });
-  res.download(briefsPath, `${req.params.client}_content_briefs.json`);
+// Export content briefs — prefers every brief tied to a successfully generated image (manifest),
+// else merged content_briefs.json (local or Supabase).
+router.get('/:client/export/briefs', async (req, res) => {
+  const slug = req.params.client;
+  const filename = `${slug}_content_briefs.json`;
+
+  try {
+    const manifest = await getManifestAsync(slug);
+    const fromManifest = (manifest || [])
+      .filter(m => m.status === 'success' && m.brief && typeof m.brief === 'object' && !m.brief.error)
+      .map(m => m.brief)
+      .sort((a, b) => {
+        const c = (a.format_id || '').localeCompare(b.format_id || '', undefined, { numeric: true });
+        if (c !== 0) return c;
+        return String(a.version || '').localeCompare(String(b.version || ''));
+      });
+
+    if (fromManifest.length) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(JSON.stringify(fromManifest, null, 2));
+    }
+
+    const briefsPath = path.join(CLIENTS_DIR, slug, 'output', 'content_briefs.json');
+    let payload = null;
+    if (fs.existsSync(briefsPath)) {
+      payload = JSON.parse(fs.readFileSync(briefsPath, 'utf8'));
+    } else {
+      payload = await getBriefsAsync(slug);
+    }
+    if (!payload || !Array.isArray(payload) || payload.length === 0) {
+      return res.status(404).json({ error: 'No briefs found. Run Strategy or Creative first.' });
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(JSON.stringify(payload, null, 2));
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
 });
 
 // Export master context as JSON download

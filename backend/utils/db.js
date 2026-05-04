@@ -490,6 +490,7 @@ function getPrompt(slug, label) {
 
 function normalizeCreativeImageUrl(slug, m) {
   if (!m || m.status !== 'success') return m?.image_url || null;
+  if (m.image_url && (m.image_url.startsWith('http://') || m.image_url.startsWith('https://'))) return m.image_url;
   if (m.image_url && m.image_url.startsWith('/api/creatives/')) return m.image_url;
   return `/api/creatives/${slug}/images/${m.label}.jpg`;
 }
