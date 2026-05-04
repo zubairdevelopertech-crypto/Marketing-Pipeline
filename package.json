@@ -1,0 +1,12 @@
+{
+  "name": "adpipeline",
+  "private": true,
+  "description": "Creative Pipeline — build UI + run API (single host for Railway / Render)",
+  "scripts": {
+    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
+    "start": "node backend/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
