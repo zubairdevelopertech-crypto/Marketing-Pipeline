@@ -134,15 +134,19 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <div className="page-title">Creatives</div>
-            <div className="page-sub">
-              {successCount} generated · {top10.length} top-rated
+            <div className="page-title gradient-text" style={{ display: 'inline-block' }}>Creatives</div>
+            <div className="page-sub" style={{ marginTop: 4 }}>
+              <span style={{ color: 'var(--green)', fontWeight: 500 }}>{successCount}</span> generated
+              {top10.length > 0 && <> · <span style={{ color: 'var(--accent)', fontWeight: 500 }}>{top10.length}</span> top-rated</>}
               {failedCount > 0 && <span style={{ color: 'var(--red)', marginLeft: 8 }}>· {failedCount} failed</span>}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={() => download('download')}>Download All</button>
-            {top10.length > 0 && <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>Export Top 10</button>}
+            {top10.length > 0 && <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Top {top10.length}
+            </button>}
           </div>
         </div>
       </div>
@@ -323,11 +327,22 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
 
                 {/* Details pane */}
                 <div className="g-modal-details">
+                  {/* Safe zone badge */}
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <span className="safe-zone-badge">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      Safe zones applied
+                    </span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 9, padding: '3px 8px', borderRadius: 4, background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text3)' }}>
+                      4:5 · 1080×1350px
+                    </span>
+                  </div>
+
                   {/* Meta ad name — prominently shown */}
                   {selected.meta_name && (
                     <div style={{ padding: '10px 14px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                       <div>
-                        <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 3 }}>Meta Ad Name — use this when uploading to Meta</div>
+                        <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 3 }}>Meta Ad Name — copy this when uploading to Meta</div>
                         <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)', letterSpacing: 0.3 }}>{selected.meta_name}</div>
                       </div>
                       <button

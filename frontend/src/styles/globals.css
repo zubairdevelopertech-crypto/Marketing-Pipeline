@@ -49,8 +49,28 @@
   --topbar-h:  58px;
 
   /* ── Shadows ── */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-sm:  0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:  0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg:  0 20px 60px rgba(0,0,0,0.13), 0 8px 24px rgba(0,0,0,0.07);
+  --shadow-xl:  0 32px 80px rgba(0,0,0,0.16), 0 12px 32px rgba(0,0,0,0.08);
+
+  /* ── Glow shadows (color-tinted) ── */
+  --glow-green:  0 0 0 1px rgba(5,150,105,0.2),  0 12px 40px rgba(5,150,105,0.15);
+  --glow-accent: 0 0 0 1px rgba(79,70,229,0.2),  0 12px 40px rgba(79,70,229,0.15);
+  --glow-red:    0 0 0 1px rgba(220,38,38,0.2),   0 8px 24px  rgba(220,38,38,0.1);
+
+  /* ── Easing ── */
+  --ease-snap: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out:  cubic-bezier(0.0, 0, 0.2, 1);
+  --t-fast: 150ms var(--ease-snap);
+  --t-med:  250ms var(--ease-snap);
+  --t-slow: 400ms var(--ease-snap);
+
+  /* ── Gradients ── */
+  --grad-accent:  linear-gradient(135deg, #4F46E5 0%, #7C3AED 60%, #A855F7 100%);
+  --grad-green:   linear-gradient(135deg, #059669 0%, #10B981 100%);
+  --grad-surface: linear-gradient(180deg, #FFFFFF 0%, #F7F8FC 100%);
+  --grad-dark:    linear-gradient(135deg, #111827 0%, #1F2937 100%);
 }
 
 /* ─────────────────── Reset ─────────────────── */
@@ -952,3 +972,365 @@ select.form-input { cursor: pointer; }
   background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent);
 }
 .export-item-primary:hover { background: rgba(79,70,229,0.12); border-color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   WOW VISUAL SYSTEM — Premium upgrades over base styles
+   Everything here is additive — overrides, not replacements.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Shimmer skeleton ── */
+@keyframes shimmer {
+  0%   { background-position: -400% 0; }
+  100% { background-position:  400% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--surface2) 25%, var(--surface3) 50%, var(--surface2) 75%);
+  background-size: 400% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+  border-radius: var(--radius);
+}
+
+/* ── Gradient text utility ── */
+.gradient-text {
+  background: var(--grad-accent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.gradient-text-green {
+  background: var(--grad-green);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Page title — stronger impact ── */
+.page-title {
+  letter-spacing: -0.6px;
+  line-height: 1.1;
+}
+
+/* ── Topbar — subtle depth ── */
+.topbar {
+  box-shadow: 0 1px 0 var(--border), 0 2px 12px rgba(0,0,0,0.03);
+}
+
+/* ── Main content area — subtle texture ── */
+.main {
+  background: radial-gradient(ellipse at 80% 0%, rgba(79,70,229,0.028) 0%, transparent 60%), var(--bg);
+}
+
+/* ── Stat cards — lift on hover ── */
+.stat-card {
+  transition: transform var(--t-fast), box-shadow var(--t-fast), border-color var(--t-fast);
+  background: var(--grad-surface);
+}
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border2);
+}
+.stat-value { letter-spacing: -1px; }
+
+/* ── Base card — richer depth ── */
+.card {
+  background: var(--grad-surface);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.card:hover { box-shadow: var(--shadow-md); }
+
+/* ══════════════════════════════════════
+   CREATIVE GALLERY — WOW cards
+   ══════════════════════════════════════ */
+
+/* Card lift + shadow on hover */
+.g-card {
+  transition: transform var(--t-med), box-shadow var(--t-med), border-color var(--t-med);
+  will-change: transform;
+  background: var(--grad-surface);
+}
+.g-card:hover {
+  transform: translateY(-6px) scale(1.007);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border2);
+  z-index: 3;
+}
+
+/* Image zoom inside thumb */
+.g-thumb { overflow: hidden; }
+.g-thumb img {
+  transition: transform var(--t-slow);
+  display: block;
+}
+.g-card:hover .g-thumb img { transform: scale(1.07); }
+
+/* Top-rated: green glow + gradient shimmer */
+.g-card.g-card-top { border-color: rgba(5,150,105,0.28); }
+.g-card.g-card-top:hover {
+  box-shadow: var(--glow-green);
+  border-color: var(--green);
+}
+
+/* Failed: red glow */
+.g-card.g-card-failed:hover {
+  box-shadow: var(--glow-red);
+  border-color: var(--red);
+}
+
+/* Premium TOP badge */
+.g-badge-top {
+  background: var(--grad-green);
+  box-shadow: 0 2px 10px rgba(5,150,105,0.5);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Score badge — glassmorphism */
+.g-badge-score {
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.14);
+}
+
+/* Meta name in card — subtle accent */
+.g-card .g-info [style*="Meta:"] {
+  opacity: 0.85;
+  transition: opacity var(--t-fast);
+}
+.g-card:hover .g-info [style*="Meta:"] { opacity: 1; }
+
+/* ── Staggered card entrance ── */
+@keyframes cardReveal {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.g-grid .g-card { animation: cardReveal var(--t-med) var(--ease-snap) both; }
+.g-grid .g-card:nth-child(1)  { animation-delay:   0ms; }
+.g-grid .g-card:nth-child(2)  { animation-delay:  35ms; }
+.g-grid .g-card:nth-child(3)  { animation-delay:  70ms; }
+.g-grid .g-card:nth-child(4)  { animation-delay: 105ms; }
+.g-grid .g-card:nth-child(5)  { animation-delay: 140ms; }
+.g-grid .g-card:nth-child(6)  { animation-delay: 175ms; }
+.g-grid .g-card:nth-child(7)  { animation-delay: 210ms; }
+.g-grid .g-card:nth-child(8)  { animation-delay: 245ms; }
+.g-grid .g-card:nth-child(n+9){ animation-delay: 280ms; }
+
+/* ── Modal — cinematic backdrop ── */
+.g-modal-overlay { backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.g-modal {
+  box-shadow: var(--shadow-xl);
+  background: var(--grad-surface);
+  animation: modalIn 250ms var(--ease-snap) both;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Meta ad name copy box — glow on hover */
+.g-modal-overlay [style*="accent-dim"] {
+  transition: box-shadow var(--t-fast);
+}
+.g-modal-overlay [style*="accent-dim"]:hover {
+  box-shadow: var(--glow-accent);
+}
+
+/* ── Score boxes — premium ── */
+.g-score-box {
+  background: var(--grad-surface);
+  transition: transform var(--t-fast), box-shadow var(--t-fast);
+}
+.g-score-box:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.g-score-value { letter-spacing: -1px; }
+
+/* ── Filter pills — premium hover ── */
+.g-filter-btn { transition: all var(--t-fast); }
+.g-filter-btn.active {
+  background: var(--grad-accent);
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(79,70,229,0.35);
+}
+
+/* ── Alert banners ── */
+.g-alert {
+  transition: box-shadow var(--t-fast);
+}
+.g-alert-warn:hover   { box-shadow: 0 4px 20px rgba(217,119,6,0.12); }
+.g-alert-success:hover { box-shadow: 0 4px 20px rgba(5,150,105,0.12); }
+
+/* ══════════════════════════════════════
+   BUTTONS — Premium hover states
+   ══════════════════════════════════════ */
+.btn { transition: all var(--t-fast); }
+
+.btn-primary {
+  background: var(--grad-accent);
+  box-shadow: 0 2px 8px rgba(79,70,229,0.35);
+  border: 1px solid transparent;
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(79,70,229,0.45);
+}
+.btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+
+.btn-secondary { transition: all var(--t-fast); }
+.btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ══════════════════════════════════════
+   SIDEBAR — Refined depth
+   ══════════════════════════════════════ */
+.sidebar {
+  box-shadow: 4px 0 32px rgba(0,0,0,0.18);
+  background: linear-gradient(180deg, #0F1724 0%, #111827 100%);
+}
+
+.nav-item { transition: all var(--t-fast); }
+.nav-item.active {
+  background: linear-gradient(90deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08));
+  color: #C7D2FE;
+}
+.nav-item:hover:not(.active) { background: rgba(255,255,255,0.05); }
+
+/* ══════════════════════════════════════
+   TOPBAR — Active client pill upgrade
+   ══════════════════════════════════════ */
+.topbar-client {
+  background: linear-gradient(135deg, rgba(79,70,229,0.1), rgba(124,58,237,0.06));
+  border: 1px solid rgba(79,70,229,0.22);
+  font-weight: 500;
+  transition: all var(--t-fast);
+}
+.topbar-client:hover { box-shadow: 0 0 0 3px rgba(79,70,229,0.12); }
+
+/* ══════════════════════════════════════
+   TERMINAL — Deeper dark
+   ══════════════════════════════════════ */
+.terminal {
+  background: #080D14;
+  border: 1px solid #1E2530;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.terminal-bar { background: #0F1520; border-bottom-color: #1E2530; }
+
+/* ══════════════════════════════════════
+   UPLOAD ZONE — Premium hover
+   ══════════════════════════════════════ */
+.upload-zone {
+  transition: border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+}
+.upload-zone:hover, .upload-zone.dragover {
+  box-shadow: 0 0 0 4px rgba(79,70,229,0.06);
+}
+.upload-zone.upload-zone-done {
+  box-shadow: 0 0 0 4px rgba(5,150,105,0.06);
+}
+
+/* ══════════════════════════════════════
+   FORMAT CARDS — Selection glow
+   ══════════════════════════════════════ */
+.format-card {
+  transition: all var(--t-fast);
+}
+.format-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+.format-card.selected {
+  box-shadow: var(--glow-accent);
+  border-color: var(--accent);
+}
+
+/* ══════════════════════════════════════
+   EMPTY STATES — Premium illustration
+   ══════════════════════════════════════ */
+.g-empty-icon {
+  width: 72px; height: 72px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  border-radius: 20px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 20px;
+  color: var(--accent);
+  opacity: 1;
+}
+.g-empty-title { letter-spacing: -0.3px; }
+
+/* ══════════════════════════════════════
+   SAFE ZONE INDICATOR
+   Visual helper in the creatives detail modal
+   ══════════════════════════════════════ */
+.safe-zone-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 4px;
+  background: rgba(5,150,105,0.1);
+  border: 1px solid rgba(5,150,105,0.2);
+  color: var(--green);
+}
+
+/* ══════════════════════════════════════
+   MICRO-INTERACTIONS
+   ══════════════════════════════════════ */
+
+/* Tag hover lift */
+.g-tag { transition: all var(--t-fast); }
+.g-tag:hover { transform: translateY(-1px); }
+
+/* Nav badge pulse */
+.nav-badge {
+  animation: none;
+  transition: all var(--t-fast);
+}
+
+/* Export items */
+.export-item { transition: all var(--t-fast); }
+.export-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ══════════════════════════════════════
+   FEEDBACK PAGE — Generated creative cards
+   ══════════════════════════════════════ */
+.feedback-img-card {
+  transition: transform var(--t-med), box-shadow var(--t-med);
+  will-change: transform;
+}
+.feedback-img-card:hover {
+  transform: translateY(-5px) scale(1.005);
+  box-shadow: var(--shadow-lg);
+}
+
+/* NEW badge on fresh creatives */
+@keyframes newBadgePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(79,70,229,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(79,70,229,0); }
+}
+[style*="rgba(79,70,229,0.9)"] {
+  animation: newBadgePulse 2s ease-in-out 3;
+}
+
+/* ══════════════════════════════════════
+   PROGRESS BARS — Animated fill
+   ══════════════════════════════════════ */
+.progress-fill {
+  background: var(--grad-accent);
+  box-shadow: 0 0 8px rgba(79,70,229,0.4);
+  transition: width 0.5s var(--ease-out);
+}
+
+/* ══════════════════════════════════════
+   REDUCED MOTION — Respect accessibility
+   ══════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .g-card, .g-card:hover, .g-thumb img, .stat-card { transition: none !important; transform: none !important; }
+  .g-grid .g-card { animation: none !important; }
+  .g-modal { animation: none !important; }
+  .skeleton { animation: none !important; }
+  .btn-primary:hover, .btn-secondary:hover { transform: none !important; }
+  .export-item:hover, .format-card:hover { transform: none !important; }
+  [style*="rgba(79,70,229,0.9)"] { animation: none !important; }
+}
