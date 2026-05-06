@@ -49,7 +49,10 @@ router.get('/:client/run', async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
     if (typeof res.flush === 'function') res.flush();
   };
-  const onProgress = (event) => { send(event); console.log(`[Feedback] ${event.message}`); };
+  const onProgress = (event) => {
+    send(event);
+    if (event.message) console.log(`[Feedback] ${event.message}`);
+  };
 
   try {
     send({ type: 'start', message: `Feedback loop started — Iteration ${iterationNum}`, timestamp: new Date().toISOString() });

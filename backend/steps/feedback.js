@@ -308,12 +308,31 @@ Return ONLY valid JSON (no markdown, no prose outside JSON):
     message: `Analysis complete — generating ${priorities.length} new creatives…`
   });
 
+  // Send analysis summary so frontend can show it while images generate
+  onProgress({
+    type: 'analysis_ready',
+    step: 'feedback',
+    status: 'running',
+    message: `Analysis complete — generating ${priorities.length} new creatives…`,
+    analysis_data: {
+      performance_summary:        analysis.performance_summary,
+      key_insights:               analysis.key_insights,
+      winning_creatives:          analysis.winning_creatives,
+      losing_creatives:           analysis.losing_creatives,
+      best_performing_angle:      analysis.best_performing_angle,
+      next_7_days_recommendation: analysis.next_7_days_recommendation,
+      mode:                       analysis.mode,
+    }
+  });
+
   // ── Generate improved / new creatives ────────────────────────────────────────
   const iterations = [];
 
   for (const plan of priorities) {
-    const newLabel = plan.label || `FORMAT-00-VERSION-A-V${iterationNum}`;
-    onProgress({ step: 'feedback', status: 'running', message: `Building creative for ${newLabel}…` });
+    // Enforce iteration suffix so labels never overwrite main pipeline images
+    const baseLabel = (plan.label || 'FORMAT-01-VERSION-A').replace(/-V\d+$/, '');
+    const newLabel  = `${baseLabel}-V${iterationNum}`;
+    onProgress({ step: 'feedback', status: 'running', message: `[${iterations.length + 1}/${priorities.length}] Building ${newLabel}…` });
 
     try {
       const isNL = (context.target_audience?.location || '').toLowerCase().includes('nether') ||
@@ -367,14 +386,30 @@ Return ONLY valid JSON:
       fs.writeFileSync(imagePath, imageBytes);
 
       const storageUrl = await uploadImageToStorage(clientSlug, `iteration_${iterationNum}/${newLabel}`, imageBytes).catch(() => null);
-      iterData.image_url   = storageUrl || `/api/creatives/${clientSlug}/images/iteration_${iterationNum}/${newLabel}.jpg`;
-      iterData.image_path  = imagePath;
-      iterData.status      = 'success';
-      iterData.source_ad   = plan.source_ad || '';
+      // FIXED: use /api/feedback/ route, not /api/creatives/
+      iterData.image_url     = storageUrl || `/api/feedback/${clientSlug}/images/iteration_${iterationNum}/${newLabel}.jpg`;
+      iterData.image_path    = imagePath;
+      iterData.status        = 'success';
+      iterData.source_ad     = plan.source_ad || '';
       iterData.winning_angle = plan.winning_angle || '';
       iterations.push(iterData);
 
-      onProgress({ step: 'feedback', status: 'running', message: `   ✅ ${newLabel} — image saved` });
+      // Fire per-image event so frontend shows the image immediately
+      onProgress({
+        type:        'image_ready',
+        step:        'feedback',
+        status:      'running',
+        message:     `✅ ${newLabel} — image ready`,
+        label:       newLabel,
+        image_url:   iterData.image_url,
+        headline:    iterData.headline,
+        subheadline: iterData.subheadline,
+        body_copy:   iterData.body_copy,
+        cta_text:    iterData.cta_text,
+        change_made: iterData.change_made,
+        source_ad:   plan.source_ad || '',
+        winning_angle: plan.winning_angle || '',
+      });
     } catch (e) {
       onProgress({ step: 'feedback', status: 'running', message: `   ❌ ${newLabel} failed: ${e.message.slice(0, 80)}` });
       iterations.push({ label: newLabel, status: 'error', error: e.message, source_ad: plan.source_ad || '' });

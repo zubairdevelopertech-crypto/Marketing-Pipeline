@@ -33,6 +33,16 @@ const INITIAL_PIPELINE = {
   clientSlug: null
 };
 
+const INITIAL_FEEDBACK = {
+  running: false,
+  logs: [],
+  images: {},      // { label: { image_url, headline, change_made, source_ad, status } }
+  report: null,    // analysis summary (arrives via analysis_ready event)
+  iterations: [],  // final list (arrives in complete event)
+  clientSlug: null,
+  startTime: null,
+};
+
 function getLogType(event) {
   if (event.type === 'complete') return 'success';
   if (event.type === 'error') return 'error';
@@ -52,6 +62,10 @@ export default function App() {
   // Pipeline state lives at App level — survives page navigation
   const [pipeline, setPipeline] = useState(INITIAL_PIPELINE);
   const pipelineESRef = useRef(null);
+
+  // Feedback state — also App level so it survives navigation
+  const [feedbackPipeline, setFeedbackPipeline] = useState(INITIAL_FEEDBACK);
+  const feedbackESRef = useRef(null);
 
   const addToast = useCallback((msg, type = 'info') => {
     const id = Date.now();
@@ -188,8 +202,70 @@ export default function App() {
     setPipeline(INITIAL_PIPELINE);
   }, []);
 
+  const startFeedback = useCallback((slug, iteration) => {
+    feedbackESRef.current?.close();
+    const startTime = Date.now();
+    setFeedbackPipeline({ ...INITIAL_FEEDBACK, running: true, clientSlug: slug, startTime });
+
+    const es = new EventSource(`/api/feedback/${slug}/run?iteration=${iteration}`);
+    feedbackESRef.current = es;
+
+    es.onmessage = (ev) => {
+      let event;
+      try { event = JSON.parse(ev.data); } catch { return; }
+
+      const now = Math.floor((Date.now() - startTime) / 1000);
+      const timeStr = `${String(Math.floor(now / 60)).padStart(2,'0')}:${String(now % 60).padStart(2,'0')}`;
+
+      setFeedbackPipeline(prev => {
+        const logEntry = event.message ? { time: timeStr, msg: event.message, type: event.type === 'error' ? 'error' : event.type === 'complete' || event.type === 'image_ready' ? 'success' : 'info' } : null;
+        const newLogs = logEntry ? [...prev.logs, logEntry] : prev.logs;
+
+        let newImages = prev.images;
+        if (event.type === 'image_ready') {
+          newImages = { ...prev.images, [event.label]: { image_url: event.image_url, headline: event.headline, subheadline: event.subheadline, body_copy: event.body_copy, cta_text: event.cta_text, change_made: event.change_made, source_ad: event.source_ad, winning_angle: event.winning_angle, status: 'success' } };
+        }
+
+        let newReport = prev.report;
+        if (event.type === 'analysis_ready' && event.analysis_data) newReport = event.analysis_data;
+
+        let newRunning = prev.running;
+        let newIterations = prev.iterations;
+        if (event.type === 'complete') {
+          newRunning = false; es.close();
+          if (event.data)       newReport = event.data;
+          if (event.iterations) newIterations = event.iterations;
+        }
+        if (event.type === 'error') { newRunning = false; es.close(); }
+
+        return { ...prev, running: newRunning, logs: newLogs, images: newImages, report: newReport, iterations: newIterations };
+      });
+
+      if (event.type === 'complete') addToast('Feedback complete — new creatives ready!', 'success');
+      if (event.type === 'error')    addToast('Feedback error: ' + event.message, 'error');
+    };
+
+    es.onerror = () => {
+      setFeedbackPipeline(prev => ({
+        ...prev, running: false,
+        logs: [...prev.logs, { time: '--:--', msg: '⚠️ Connection lost — feedback may still be running. Check back in a few minutes.', type: 'warn' }]
+      }));
+    };
+  }, [addToast]);
+
+  const stopFeedback = useCallback(() => {
+    feedbackESRef.current?.close();
+    setFeedbackPipeline(prev => ({ ...prev, running: false }));
+  }, []);
+
+  const resetFeedback = useCallback(() => {
+    feedbackESRef.current?.close();
+    setFeedbackPipeline(INITIAL_FEEDBACK);
+  }, []);
+
   const pageProps = { activeClient, setActiveClient, clients, addToast, navigate, loadClients };
   const pipelineProps = { pipeline, startPipeline, stopPipeline, resetPipeline };
+  const feedbackProps = { feedbackPipeline, startFeedback, stopFeedback, resetFeedback };
 
   return (
     <div className="app">
@@ -216,7 +292,7 @@ export default function App() {
           {activePage === 'upload' && <UploadPage {...pageProps} />}
           {activePage === 'run' && <RunPage {...pageProps} {...pipelineProps} />}
           {activePage === 'creatives' && <CreativesPage {...pageProps} />}
-          {activePage === 'feedback' && <FeedbackPage {...pageProps} />}
+          {activePage === 'feedback' && <FeedbackPage {...pageProps} {...feedbackProps} />}
           {activePage === 'formats' && <FormatsPage {...pageProps} />}
           {activePage === 'settings' && <SettingsPage {...pageProps} />}
         </div>
