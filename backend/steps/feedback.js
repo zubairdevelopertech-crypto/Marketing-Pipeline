@@ -1,231 +1,412 @@
-const { callClaudeJSON, callClaude } = require('../utils/claude');
-const { generateImage } = require('../utils/gemini');
-const fs = require('fs');
+/**
+ * feedback.js — Feedback loop engine
+ *
+ * Two operating modes (auto-detected from the CSV):
+ *
+ * FORMAT MODE  — ad names match FORMAT-01-VERSION-A labels.
+ *                Full creative context available. Makes targeted improvements.
+ *
+ * FREE MODE    — ad names are custom (e.g. "Remote werken", "Angst").
+ *                Analyzes performance patterns, maps winning concepts to the
+ *                FORMAT library, and generates new static image ads.
+ */
+
+const { callClaudeJSON } = require('../utils/claude');
+const { generateImage }  = require('../utils/gemini');
+const { getContextAsync, getBriefsAsync, getManifestAsync, uploadImageToStorage } = require('../utils/db');
+const fs   = require('fs');
 const path = require('path');
 
-function parseCSV(csvText) {
-  const lines = csvText.trim().split('\n');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-  return lines.slice(1).map(line => {
-    const vals = line.split(',').map(v => v.trim().replace(/"/g, ''));
-    const row = {};
-    headers.forEach((h, i) => row[h] = vals[i] || '');
-    return row;
-  });
+// ── Dutch ↔ English column mapping ───────────────────────────────────────────
+const COL_MAP = {
+  'Advertentienaam':                            'ad_name',
+  'Naam advertentie':                           'ad_name',
+  'Weergaven':                                  'impressions',
+  'Bereik':                                     'reach',
+  'Frequentie':                                 'frequency',
+  'Besteed bedrag (EUR)':                       'spend',
+  'Besteed bedrag':                             'spend',
+  'Resultaten':                                 'conversions',
+  'Resultatenindicator':                        'result_type',
+  'Kosten per resultaten':                      'cost_per_result',
+  'CTR (doorklikratio voor klikken op link)':   'ctr',
+  'CPC (kosten per klik op link) (EUR)':        'cpc',
+  'Klikken op links':                           'link_clicks',
+  'Klikken (alle)':                             'all_clicks',
+  'CTR (alle)':                                 'ctr_all',
+  'CPM (kosten per 1000 weergaven) (EUR)':      'cpm',
+  'Kwaliteitsscore':                            'quality_score',
+  'Rangschikking betrokkenheidspercentage':     'engagement_ranking',
+  'Score conversieratio':                       'conversion_score',
+  'Naam advertentieset':                        'ad_set_name',
+  'Weergaven van landingspagina':               'landing_page_views',
+  // English pass-through
+  'ad_name': 'ad_name', 'impressions': 'impressions', 'clicks': 'clicks',
+  'ctr': 'ctr', 'cpc': 'cpc', 'spend': 'spend', 'conversions': 'conversions',
+  'cpa': 'cpa', 'reach': 'reach', 'thumb_stop_rate': 'thumb_stop_rate',
+};
+
+// ── Robust CSV parser ─────────────────────────────────────────────────────────
+function parseLine(line) {
+  const out = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ) { out.push(cur); cur = ''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map(v => v.trim());
 }
 
+function parseMetaCSV(raw) {
+  // Remove BOM and normalise line endings
+  const text = raw.replace(/^﻿/, '').trim();
+  const lines = text.split(/\r?\n/);
+
+  // Split into sections at blank lines — Meta sometimes exports two tables
+  const sections = [];
+  let block = [];
+  for (const ln of lines) {
+    if (!ln.trim()) {
+      if (block.length > 1) sections.push(block);
+      block = [];
+    } else {
+      block.push(ln);
+    }
+  }
+  if (block.length > 1) sections.push(block);
+  if (!sections.length) sections.push(lines.filter(l => l.trim()));
+
+  // Parse every section, pick the one with the most columns (most detail)
+  let best = [];
+  for (const sec of sections) {
+    const hdrs = parseLine(sec[0]);
+    const rows = sec.slice(1).map(ln => {
+      const vals = parseLine(ln);
+      const row = {};
+      hdrs.forEach((h, i) => {
+        const key = COL_MAP[h] || h;
+        const val = (vals[i] || '').replace(/^"|"$/g, '');
+        row[key] = val;
+      });
+      return row;
+    }).filter(r => {
+      const nm = r.ad_name || '';
+      return nm && nm !== 'Advertentienaam' && nm !== 'ad_name' && nm !== 'Naam advertentie';
+    });
+
+    const colCount = Object.keys(rows[0] || {}).length;
+    if (rows.length > 0 && colCount > Object.keys(best[0] || {}).length) best = rows;
+  }
+  return best;
+}
+
+function num(v) {
+  if (!v || v === '-' || v === '') return 0;
+  return parseFloat(String(v).replace(',', '.')) || 0;
+}
+
+function isFormatMode(rows) {
+  return rows.some(r => /^FORMAT-\d+-VERSION-[AB]/i.test(r.ad_name || ''));
+}
+
+// ── Main feedback runner ──────────────────────────────────────────────────────
 async function runFeedback(clientDir, csvPath, iterationNum, onProgress) {
-  onProgress({ step: 'feedback', status: 'running', message: '📊 Reading Meta performance data...' });
+  const clientSlug = path.basename(clientDir);
+  const outputDir  = path.join(clientDir, 'output');
+  const imagesDir  = path.join(outputDir, 'images', `iteration_${iterationNum}`);
+  fs.mkdirSync(imagesDir, { recursive: true });
 
-  const outputDir = path.join(clientDir, 'output');
+  onProgress({ step: 'feedback', status: 'running', message: 'Reading Meta performance CSV…' });
 
-  // Load previous pipeline data (this is how it "remembers")
-  const contextPath = path.join(outputDir, 'master_context.json');
-  const briefsPath = path.join(outputDir, 'content_briefs.json');
-  const manifestPath = path.join(outputDir, 'creative_manifest.json');
+  // ── Load CSV ────────────────────────────────────────────────────────────────
+  const rawCSV  = fs.readFileSync(csvPath, 'utf-8');
+  const metaRows = parseMetaCSV(rawCSV);
 
-  if (!fs.existsSync(contextPath)) throw new Error('No master context found. Run the main pipeline first.');
-  if (!fs.existsSync(manifestPath)) throw new Error('No creative manifest found. Run the main pipeline first.');
+  if (!metaRows.length) throw new Error('Could not parse the CSV. Check that the file is a valid Meta Ads export.');
 
-  const context = JSON.parse(fs.readFileSync(contextPath));
-  const briefs = fs.existsSync(briefsPath) ? JSON.parse(fs.readFileSync(briefsPath)) : [];
-  const manifest = JSON.parse(fs.readFileSync(manifestPath));
+  onProgress({ step: 'feedback', status: 'running', message: `Parsed ${metaRows.length} ad rows from Meta CSV.` });
 
-  // Build lookup of all previous creatives with their full prompts and copy
+  // ── Load pipeline data from DB (or filesystem) ──────────────────────────────
+  const context  = await getContextAsync(clientSlug);
+  const briefs   = (await getBriefsAsync(clientSlug)) || [];
+  const manifest = (await getManifestAsync(clientSlug)) || [];
+
+  if (!context) throw new Error('No master context found. Run the main pipeline first so Claude knows the product and audience.');
+
+  const briefsLookup   = {};
   const manifestLookup = {};
-  manifest.forEach(m => {
-    manifestLookup[m.label] = m;
+  briefs.forEach(b => { briefsLookup[`${b.format_id}-VERSION-${b.version}`] = b; });
+  manifest.forEach(m => { manifestLookup[m.label] = m; });
+
+  // ── Detect mode ─────────────────────────────────────────────────────────────
+  const formatMode = isFormatMode(metaRows);
+  onProgress({
+    step: 'feedback', status: 'running',
+    message: formatMode
+      ? 'FORMAT mode detected — ad names match FORMAT labels. Cross-referencing original creative context…'
+      : 'Free-form mode detected — custom ad names found. Claude will map winning concepts to our FORMAT library…'
   });
-  const briefsLookup = {};
-  briefs.forEach(b => {
-    briefsLookup[`${b.format_id}-VERSION-${b.version}`] = b;
-  });
 
-  const csvText = fs.readFileSync(csvPath, 'utf-8');
-  const metaData = parseCSV(csvText);
-
-  onProgress({ step: 'feedback', status: 'running', message: `📈 Loaded ${metaData.length} ad performance records. Claude is analyzing...` });
-
-  // Build full context of what was previously created for each ad
-  const adContexts = metaData.map(row => {
-    const label = row.ad_name || '';
-    const creative = manifestLookup[label] || {};
-    const brief = briefsLookup[label] || {};
+  // ── Enrich rows with any available creative context ──────────────────────────
+  const enrichedRows = metaRows.map(row => {
+    const name = row.ad_name || '';
+    const cr   = manifestLookup[name] || {};
+    const br   = briefsLookup[name]   || {};
     return {
-      ...row,
-      previous_headline: creative.prompt?.headline || brief.headline || '',
-      previous_hook: brief.hook_line || '',
-      previous_body: creative.prompt?.body_copy || brief.body_copy || '',
-      previous_cta: creative.prompt?.cta_text || brief.cta_text || '',
-      previous_visual: creative.prompt?.visual_direction || '',
-      winning_argument: brief.winning_argument || '',
-      format_name: brief.format_name || ''
+      ad_name:            name,
+      impressions:        num(row.impressions),
+      reach:              num(row.reach),
+      spend_eur:          num(row.spend),
+      conversions:        num(row.conversions),
+      result_type:        row.result_type || '',
+      cost_per_result:    num(row.cost_per_result),
+      ctr_pct:            num(row.ctr),
+      cpc_eur:            num(row.cpc),
+      link_clicks:        num(row.link_clicks),
+      cpm_eur:            num(row.cpm),
+      quality_score:      row.quality_score || '',
+      engagement_ranking: row.engagement_ranking || '',
+      conversion_score:   row.conversion_score  || '',
+      ad_set_name:        row.ad_set_name || '',
+      // Creative context (only available in FORMAT mode)
+      original_headline:  cr.prompt?.headline   || br.headline   || '',
+      original_hook:      br.hook_line           || '',
+      original_body:      cr.prompt?.body_copy   || br.body_copy  || '',
+      original_cta:       cr.prompt?.cta_text    || br.cta_text   || '',
+      original_visual:    cr.prompt?.visual_direction || '',
+      winning_argument:   br.winning_argument    || '',
+      format_name:        br.format_name         || '',
     };
   });
 
-  const analysisPrompt = `You are a senior Meta Ads performance analyst and creative strategist.
+  // Sort by spend desc so Claude sees the most-run ads first
+  enrichedRows.sort((a, b) => b.spend_eur - a.spend_eur);
+
+  // ── Analysis prompt (adapts to mode) ────────────────────────────────────────
+  const modeContext = formatMode
+    ? `These ad names correspond directly to ads generated by the Creative Pipeline (FORMAT-XX-VERSION-X labels).
+       The creative context (headline, hook, body, visual direction) is included per ad.
+       Your job: diagnose why each performed as it did and specify targeted improvements.`
+    : `These are existing campaign ads with custom Dutch names — they are NOT labelled with FORMAT-XX codes.
+       They may be video ads, meme ads, or earlier creative work.
+       Your job: identify which CREATIVE ANGLES and HOOKS proved most effective, then create iteration_priorities that map
+       each winning angle to the best FORMAT from the Creative Pipeline FORMAT library.
+       Assign new FORMAT-XX-VERSION-X labels to each iteration priority.`;
+
+  const analysisPrompt = `You are a senior Meta Ads performance analyst and direct-response creative strategist.
 
 CLIENT: ${context.client_name}
 PRODUCT: ${context.product_name}
 CORE USP: ${context.core_usp}
+TARGET AUDIENCE: ${JSON.stringify(context.target_audience || {})}
+PAIN POINTS: ${(context.pain_points || []).join(', ')}
+MARKET LANGUAGE / VERBATIM QUOTES: ${context.market_language || ''}
 AWARENESS LEVEL: ${context.awareness_level}
-AVATAR PAIN POINTS: ${(context.pain_points || []).join(', ')}
-MARKET LANGUAGE: ${context.market_language || ''}
 
-META PERFORMANCE DATA WITH PREVIOUS CREATIVE CONTEXT:
-${JSON.stringify(adContexts, null, 2)}
+MODE: ${formatMode ? 'FORMAT (ads are labelled FORMAT-XX-VERSION-X)' : 'FREE-FORM (custom ad names)'}
 
-This is iteration ${iterationNum}. Analyze performance and identify patterns.
+${modeContext}
 
-Return a JSON analysis:
+AVAILABLE FORMAT IDs (Creative Pipeline FORMAT library):
+FORMAT-01 PAS (Problem-Agitate-Solution), FORMAT-02 BAB (Before-After-Bridge),
+FORMAT-03 Social Proof, FORMAT-04 Direct Offer, FORMAT-05 Listicle (phone mockup),
+FORMAT-06 Question Hook, FORMAT-07 Comparison Table, FORMAT-08 Result First,
+FORMAT-09 Empathy, FORMAT-10 Bold Statement, FORMAT-11 Sticky Note,
+FORMAT-12 iPhone Notes, FORMAT-13 iMessage, FORMAT-14 ChatGPT Ad,
+FORMAT-15 Us vs Them, FORMAT-16 Benefit Callout, FORMAT-17 UGC Static,
+FORMAT-18 Cartoon Style, FORMAT-19 Lifestyle Context, FORMAT-20 Carousel Panels,
+FORMAT-21 Review (testimonial), FORMAT-22 Negative/Positive split
+
+META PERFORMANCE DATA (${enrichedRows.length} ads, sorted by spend):
+${JSON.stringify(enrichedRows, null, 2)}
+
+ANALYSIS RULES:
+- Ads with spend < €5 and 0 conversions are statistically inconclusive — note but don't over-penalise
+- Focus on CPL (cost_per_result) and conversions for lead-gen campaigns
+- CTR matters for awareness-stage creatives even if CPL is not tracked
+- "not_delivering" status means the ad is paused but the historic data is still valid
+- Engagement rankings ("Beneden gemiddeld" = Below average, "Gemiddeld" = Average, "Boven gemiddeld" = Above average)
+
+Return ONLY valid JSON (no markdown, no prose outside JSON):
 {
-  "performance_summary": "3-4 sentence overview of what the data shows, what worked, what didn't",
+  "performance_summary": "3-4 sentences: what the data shows overall, what worked, what failed, what the audience responded to",
+  "mode": "${formatMode ? 'format' : 'free'}",
   "winning_creatives": [
     {
-      "label": "FORMAT-01-VERSION-A",
-      "ctr": "1.8%",
-      "why_winning": "Psychological reason with reference to the specific copy/hook used",
-      "winning_elements": ["specific element 1", "specific element 2"],
-      "best_audience": "cold/warm/retargeting",
-      "scale_recommendation": "Specific next action"
+      "ad_name": "exact ad name from data",
+      "spend_eur": 0,
+      "conversions": 0,
+      "cpl_eur": 0,
+      "ctr_pct": 0,
+      "why_winning": "Specific psychological reason: what angle/hook/promise resonated",
+      "winning_angle": "The core creative concept in one sentence",
+      "scale_recommendation": "Specific action: increase budget to X/day, duplicate adset, etc."
     }
   ],
   "losing_creatives": [
     {
-      "label": "FORMAT-02-VERSION-B",
-      "ctr": "0.4%",
-      "why_losing": "Specific reason referencing the hook/copy/visual that underperformed",
-      "fix": "Concrete change with reference to what was wrong"
+      "ad_name": "exact ad name",
+      "spend_eur": 0,
+      "why_losing": "Specific reason: wrong hook, wrong audience stage, weak offer, etc.",
+      "fix": "What to change — be specific"
     }
   ],
-  "best_performing_offer_angle": "Description with evidence from data",
-  "best_performing_pain_point": "Which pain resonated most and why",
-  "best_performing_format": "Which format structure won and why",
-  "best_performing_version": "A or B overall and why",
-  "fatigue_signals": ["Labels showing frequency decline"],
+  "key_insights": [
+    "Insight about what creative angle worked and why (reference real data)",
+    "Insight about the audience — what pain point they responded to",
+    "Insight about format or structure that worked"
+  ],
+  "best_performing_angle": "The #1 creative concept that proved itself with data",
+  "best_performing_pain_point": "Which pain resonated most",
   "iteration_priorities": [
     {
-      "label": "FORMAT-03-VERSION-B",
-      "change_type": "rewrite_hook/adjust_offer/strengthen_cta/change_visual/change_angle",
-      "what_was_wrong": "Specific diagnosis referencing original copy",
-      "specific_change": "Exact change to make with new copy suggestion",
-      "confidence": "high/medium/low"
+      "label": "FORMAT-01-VERSION-A",
+      "source_ad": "exact source ad name that inspired this (or 'new' if no direct source)",
+      "winning_angle": "The creative concept being translated/improved",
+      "format_id": "FORMAT-01",
+      "format_name": "PAS",
+      "why_this_format": "Why this FORMAT best expresses this concept for static image",
+      "version": "A",
+      "brief": {
+        "hook_line": "Opening hook — max 8 words",
+        "headline": "Main headline — max 6 words, bold",
+        "subheadline": "Supporting — max 10 words",
+        "body_copy": "Max 20 words in Dutch market language matching the winning angle",
+        "cta_text": "CTA — max 4 words",
+        "winning_argument": "The #1 reason this creative will work based on the data"
+      },
+      "change_type": "new_static_version | improve_hook | improve_offer | improve_cta",
+      "what_was_wrong": "What underperformed or what gap exists",
+      "specific_change": "Exactly what this new creative does differently"
     }
   ],
-  "weekly_report_summary": "4-5 sentences for client-facing report",
-  "next_7_days_recommendation": "Specific budget and creative actions for next week"
+  "weekly_report_summary": "4-5 sentence client-facing summary: what ran, what won, what we're doing next",
+  "next_7_days_recommendation": "Specific budget and creative actions for next 7 days"
 }`;
 
-  const analysis = await callClaudeJSON(analysisPrompt, { maxTokens: 4000 });
+  onProgress({ step: 'feedback', status: 'running', message: 'Claude is analyzing performance data…' });
 
-  onProgress({ step: 'feedback', status: 'running', message: `🔄 Generating ${analysis.iteration_priorities?.length || 0} improved creatives...` });
+  const analysis = await callClaudeJSON(analysisPrompt, { maxTokens: 5000 });
 
+  const priorities = analysis.iteration_priorities || [];
+  onProgress({
+    step: 'feedback', status: 'running',
+    message: `Analysis complete — generating ${priorities.length} new creatives…`
+  });
+
+  // ── Generate improved / new creatives ────────────────────────────────────────
   const iterations = [];
-  const iterImagesDir = path.join(outputDir, 'images', `iteration_${iterationNum}`);
-  fs.mkdirSync(iterImagesDir, { recursive: true });
 
-  for (const plan of (analysis.iteration_priorities || [])) {
-    const label = plan.label;
-    const newLabel = `${label}-V${iterationNum}`;
-    const original = manifestLookup[label] || {};
-    const originalBrief = briefsLookup[label] || {};
-
-    onProgress({ step: 'feedback', status: 'running', message: `🔧 Iterating ${label} → ${newLabel}` });
+  for (const plan of priorities) {
+    const newLabel = plan.label || `FORMAT-00-VERSION-A-V${iterationNum}`;
+    onProgress({ step: 'feedback', status: 'running', message: `Building creative for ${newLabel}…` });
 
     try {
-      const iterPrompt = `You are a world-class direct response copywriter. A Meta ad underperformed and needs improvement.
+      const isNL = (context.target_audience?.location || '').toLowerCase().includes('nether') ||
+                   (context.target_audience?.location || '').toLowerCase().includes('nederland');
+      const lang = isNL ? 'Dutch (Nederlands)' : 'English';
+
+      const iterPrompt = `You are a world-class Meta ad creative director. Generate a production-ready image prompt.
 
 CLIENT: ${context.client_name}
 PRODUCT: ${context.product_name}
-CORE USP: ${context.core_usp}
 TONE: ${context.tone_of_voice}
-MARKET LANGUAGE: ${context.market_language || ''}
+BRAND COLOR: ${context.brand_primary_color || '#2563EB'}
+ALL TEXT ON THE IMAGE MUST BE IN: ${lang}
 
-ORIGINAL CREATIVE (${label}):
-Format: ${originalBrief.format_name || ''}
-Hook: ${originalBrief.hook_line || ''}
-Headline: ${original.prompt?.headline || originalBrief.headline || ''}
-Body: ${original.prompt?.body_copy || originalBrief.body_copy || ''}
-CTA: ${original.prompt?.cta_text || originalBrief.cta_text || ''}
+CREATIVE BRIEF:
+Format: ${plan.format_id} — ${plan.format_name} — Version ${plan.version || 'A'}
+Winning angle: ${plan.winning_angle}
+Hook: ${plan.brief?.hook_line || ''}
+Headline: ${plan.brief?.headline || ''}
+Subheadline: ${plan.brief?.subheadline || ''}
+Body copy: ${plan.brief?.body_copy || ''}
+CTA: ${plan.brief?.cta_text || ''}
+Why it will work: ${plan.brief?.winning_argument || ''}
 
-PERFORMANCE DIAGNOSIS:
-What was wrong: ${plan.what_was_wrong}
-Change needed: ${plan.change_type}
-Specific improvement: ${plan.specific_change}
+SOURCE INSIGHT: ${plan.what_was_wrong || ''} → ${plan.specific_change || ''}
 
-Generate improved creative. Return ONLY valid JSON:
+IMPORTANT: The nano_banana_prompt is sent DIRECTLY to Gemini which renders it as a pixel image.
+Any label like "(TOP-RIGHT)", "(MIDDLE)", "80px", "ZONE 1" will be LITERALLY PAINTED as text. Write only cinematic scene descriptions.
+
+Return ONLY valid JSON:
 {
   "label": "${newLabel}",
-  "change_made": "Describe exactly what changed and the psychological reason",
-  "headline": "Improved — max 6 words",
-  "subheadline": "Improved — max 12 words",
-  "body_copy": "Improved — max 25 words in market language",
-  "cta_text": "Improved — max 5 words",
-  "hook_line": "Improved — max 8 words",
-  "visual_direction": "Updated scene description — be specific",
-  "nano_banana_prompt": "Complete 200-300 word English prompt for Nano Banana Pro. Include: FORMAT. SCENE. COMPOSITION. COLORS with hex. TYPOGRAPHY hierarchy. VISIBLE TEXT word for word in correct language: Headline, Subheadline, Body, CTA. STYLE. QUALITY: mobile-first, text max 20%, high contrast. DO NOT INCLUDE list."
+  "format_id": "${plan.format_id || 'FORMAT-01'}",
+  "version": "${plan.version || 'A'}",
+  "headline": "Exact headline text",
+  "subheadline": "Exact subheadline text",
+  "body_copy": "Exact body copy",
+  "cta_text": "Exact CTA",
+  "hook_line": "${plan.brief?.hook_line || ''}",
+  "winning_argument": "${plan.brief?.winning_argument || ''}",
+  "change_made": "What changed vs the original and the psychological reason",
+  "nano_banana_prompt": "Write a 300-400 word image generation prompt for Gemini. Pure cinematic visual description — no position labels, no pixel values, no zone numbers. Include: the scene composition matching the ${plan.format_name} format, the mood and lighting, the person or product in the frame, the text that must appear word-for-word in ${lang} (headline, subheadline, CTA button), brand color ${context.brand_primary_color || '#2563EB'}. Portrait 4:5 ratio. Mobile-first. High contrast. Looks like a real Meta static ad."
 }`;
 
-      const iterData = await callClaudeJSON(iterPrompt, { maxTokens: 2000 });
+      const iterData = await callClaudeJSON(iterPrompt, { maxTokens: 2500 });
 
-      // Generate new image
-      onProgress({ step: 'feedback', status: 'running', message: `   🍌 Generating image for ${newLabel}...` });
-      const imageBytes = await generateImage(iterData.nano_banana_prompt);
-      const imagePath = path.join(iterImagesDir, `${newLabel}.jpg`);
+      onProgress({ step: 'feedback', status: 'running', message: `   Generating image for ${newLabel}…` });
+
+      const imageBytes = await generateImage(iterData.nano_banana_prompt, [], { retries: 2 });
+      const imagePath  = path.join(imagesDir, `${newLabel}.jpg`);
       fs.writeFileSync(imagePath, imageBytes);
 
-      iterData.image_path = imagePath;
-      iterData.image_url = `/outputs/${path.basename(clientDir)}/output/images/iteration_${iterationNum}/${newLabel}.jpg`;
-      iterData.status = 'success';
+      const storageUrl = await uploadImageToStorage(clientSlug, `iteration_${iterationNum}/${newLabel}`, imageBytes).catch(() => null);
+      iterData.image_url   = storageUrl || `/api/creatives/${clientSlug}/images/iteration_${iterationNum}/${newLabel}.jpg`;
+      iterData.image_path  = imagePath;
+      iterData.status      = 'success';
+      iterData.source_ad   = plan.source_ad || '';
+      iterData.winning_angle = plan.winning_angle || '';
       iterations.push(iterData);
 
-      onProgress({ step: 'feedback', status: 'running', message: `   ✅ ${newLabel} generated` });
+      onProgress({ step: 'feedback', status: 'running', message: `   ✅ ${newLabel} — image saved` });
     } catch (e) {
-      onProgress({ step: 'feedback', status: 'running', message: `   ❌ ${label} iteration failed: ${e.message.slice(0, 80)}` });
-      iterations.push({ label: newLabel, status: 'error', error: e.message });
+      onProgress({ step: 'feedback', status: 'running', message: `   ❌ ${newLabel} failed: ${e.message.slice(0, 80)}` });
+      iterations.push({ label: newLabel, status: 'error', error: e.message, source_ad: plan.source_ad || '' });
     }
 
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 2500));
   }
 
-  analysis.iterations = iterations;
+  // ── Persist results ──────────────────────────────────────────────────────────
+  analysis.iterations    = iterations;
   analysis.iteration_num = iterationNum;
-  analysis.generated_at = new Date().toISOString();
+  analysis.generated_at  = new Date().toISOString();
+  analysis.csv_row_count = enrichedRows.length;
 
   const analysisPath = path.join(outputDir, `feedback_analysis_v${iterationNum}.json`);
   fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
 
-  // Weekly report
-  const reportLines = [
-    `# Weekly Performance Report — ${context.client_name} — Iteration ${iterationNum}`,
+  // Weekly report markdown
+  const md = [
+    `# Performance Report — ${context.client_name} — Iteration ${iterationNum}`,
     `Generated: ${new Date().toISOString()}`,
     `\n## Summary\n${analysis.performance_summary}`,
-    `\n## Best Offer Angle: ${analysis.best_performing_offer_angle}`,
-    `\n## Best Pain Point: ${analysis.best_performing_pain_point}`,
-    `\n## Best Format: ${analysis.best_performing_format}`,
-    `\n## Top Performing Creatives\n`
-  ];
-  (analysis.winning_creatives || []).forEach(w => {
-    reportLines.push(`- **${w.label}** (CTR: ${w.ctr}): ${w.why_winning}`);
-    reportLines.push(`  → ${w.scale_recommendation}`);
-  });
-  reportLines.push(`\n## Iterations Generated (${iterations.length})\n`);
-  iterations.forEach(it => reportLines.push(`- ${it.label}: ${it.change_made || it.error || ''}`));
-  reportLines.push(`\n## Next 7 Days\n${analysis.next_7_days_recommendation}`);
+    `\n## Key Insights`,
+    ...(analysis.key_insights || []).map(i => `- ${i}`),
+    `\n## Top Performers`,
+    ...(analysis.winning_creatives || []).map(w =>
+      `- **${w.ad_name}** — ${w.conversions} leads @ €${w.cpl_eur} CPL — ${w.why_winning}\n  → ${w.scale_recommendation}`),
+    `\n## Generated Iterations (${iterations.length})`,
+    ...iterations.map(it => `- **${it.label}**: ${it.change_made || it.error || ''}`),
+    `\n## Next 7 Days\n${analysis.next_7_days_recommendation}`
+  ].join('\n');
 
-  const reportPath = path.join(outputDir, `weekly_report_v${iterationNum}.md`);
-  fs.writeFileSync(reportPath, reportLines.join('\n'));
+  fs.writeFileSync(path.join(outputDir, `weekly_report_v${iterationNum}.md`), md);
 
-  fs.appendFileSync(
-    path.join(clientDir, 'session_log.md'),
-    `\n## ${new Date().toISOString()} — Feedback Iteration ${iterationNum}\n- ${iterations.length} iterations generated\n`
-  );
+  try {
+    fs.appendFileSync(
+      path.join(clientDir, 'session_log.md'),
+      `\n## ${new Date().toISOString()} — Feedback Iteration ${iterationNum}\n- Rows: ${enrichedRows.length}, Mode: ${formatMode ? 'FORMAT' : 'FREE'}, Iterations: ${iterations.length}\n`
+    );
+  } catch (_) {}
 
-  onProgress({
-    step: 'feedback',
-    status: 'done',
-    message: `✅ Feedback loop complete — ${iterations.length} new creatives generated`
-  });
+  onProgress({ step: 'feedback', status: 'done', message: `✅ Feedback complete — ${iterations.length} new creatives generated` });
 
   return { analysis, iterations };
 }
