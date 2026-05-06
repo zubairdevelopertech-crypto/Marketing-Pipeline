@@ -202,6 +202,19 @@ export default function App() {
     setPipeline(INITIAL_PIPELINE);
   }, []);
 
+  // Listen for individual image retries from FeedbackPage
+  useEffect(() => {
+    const handler = (e) => {
+      const { label, image_url, headline, change_made, source_ad } = e.detail;
+      setFeedbackPipeline(prev => ({
+        ...prev,
+        images: { ...prev.images, [label]: { image_url, headline, change_made, source_ad, status: 'success' } }
+      }));
+    };
+    window.addEventListener('feedbackImageRetried', handler);
+    return () => window.removeEventListener('feedbackImageRetried', handler);
+  }, []);
+
   const startFeedback = useCallback((slug, iteration) => {
     feedbackESRef.current?.close();
     const startTime = Date.now();
@@ -224,6 +237,9 @@ export default function App() {
         let newImages = prev.images;
         if (event.type === 'image_ready') {
           newImages = { ...prev.images, [event.label]: { image_url: event.image_url, headline: event.headline, subheadline: event.subheadline, body_copy: event.body_copy, cta_text: event.cta_text, change_made: event.change_made, source_ad: event.source_ad, winning_angle: event.winning_angle, status: 'success' } };
+        }
+        if (event.type === 'image_failed') {
+          newImages = { ...prev.images, [event.label]: { status: 'error', error: event.error, source_ad: event.source_ad } };
         }
 
         let newReport = prev.report;

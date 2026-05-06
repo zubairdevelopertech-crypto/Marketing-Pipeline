@@ -52,13 +52,22 @@ async function generateImage(prompt, referenceImagePaths = [], { retries = 3, on
     }
   });
 
+  // Delay strategy by error type:
+  // 429 (quota/rate-limit): 60s → 90s → 120s → 150s → 180s  — Gemini needs a full minute
+  // 503/500 (server error): 8s  → 16s → 32s  — transient, short wait
+  // network:                6s  → 12s → 24s
+  const delayFor = (status, attempt) => {
+    if (status === 429) return (60 + (attempt - 1) * 30) * 1000;  // 60s, 90s, 120s…
+    return Math.pow(2, attempt) * 4000;                            // 8s, 16s, 32s…
+  };
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey       // correct auth header per docs
+          'x-goog-api-key': apiKey
         },
         body,
         timeout: 240000
@@ -66,17 +75,17 @@ async function generateImage(prompt, referenceImagePaths = [], { retries = 3, on
 
       if (!response.ok) {
         const errText = await response.text();
-        const status = response.status;
+        const status  = response.status;
 
-        // 404 = wrong model name — fail immediately, don't retry
+        // 404 = wrong model name — permanent, don't retry
         if (status === 404) {
           throw new Error(`Gemini model not found (404). Check GEMINI_IMAGE_MODEL. Current: ${GEMINI_IMAGE_MODEL}`);
         }
 
-        // 503 / 429 / 500 are transient — retry with exponential backoff
-        if ((status === 503 || status === 429 || status === 500) && attempt < retries) {
-          const delay = Math.pow(2, attempt) * 3000; // 6s → 12s → 24s
+        if ((status === 429 || status === 503 || status === 500) && attempt < retries) {
+          const delay = delayFor(status, attempt);
           if (onRetry) onRetry(attempt, retries, status, Math.round(delay / 1000));
+          console.log(`[Gemini] ${status} on attempt ${attempt} — waiting ${Math.round(delay/1000)}s before retry`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
@@ -86,7 +95,6 @@ async function generateImage(prompt, referenceImagePaths = [], { retries = 3, on
 
       const data = await response.json();
 
-      // Extract image from response candidates
       for (const candidate of data.candidates || []) {
         for (const part of candidate.content?.parts || []) {
           if (part.inlineData?.data) {
@@ -100,15 +108,11 @@ async function generateImage(prompt, referenceImagePaths = [], { retries = 3, on
     } catch (e) {
       const msg = e.message || String(e);
 
-      // Don't retry permanent errors
-      if (msg.includes('model not found') || msg.includes('No image returned')) {
-        throw e;
-      }
+      if (msg.includes('model not found') || msg.includes('No image returned')) throw e;
 
-      const networkLike = e.type === 'request-timeout' ||
-        e.code === 'ECONNRESET' ||
-        e.code === 'ETIMEDOUT' ||
-        e.code === 'ENOTFOUND' ||
+      const networkLike =
+        e.type === 'request-timeout' || e.code === 'ECONNRESET' ||
+        e.code === 'ETIMEDOUT'       || e.code === 'ENOTFOUND'  ||
         /timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|network/i.test(msg);
 
       if (attempt < retries && networkLike) {

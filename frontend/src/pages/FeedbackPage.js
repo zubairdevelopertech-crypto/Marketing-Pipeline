@@ -7,8 +7,9 @@ export default function FeedbackPage({
   const [csvFile,     setCsvFile]     = useState(null);
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [iteration,   setIteration]   = useState(2);
-  const [selectedImg, setSelectedImg] = useState(null);
-  const [pastReports, setPastReports] = useState([]);
+  const [selectedImg,    setSelectedImg]    = useState(null);
+  const [pastReports,    setPastReports]    = useState([]);
+  const [retryingImages, setRetryingImages] = useState({});
   const logsRef = useRef();
 
   const slug     = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
@@ -59,8 +60,35 @@ export default function FeedbackPage({
     startFeedback(slug, iteration);
   };
 
-  const liveImages = Object.entries(images);
-  const imageCount = liveImages.length;
+  const retryImage = (label) => {
+    if (retryingImages[label]) return;
+    setRetryingImages(prev => ({ ...prev, [label]: true }));
+    const es = new EventSource(`/api/feedback/${slug}/retry-image/${iteration}/${encodeURIComponent(label)}`);
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'complete' && ev.status === 'success') {
+        // Update App-level images state via the startFeedback mechanism isn't available here
+        // Instead trigger a page refresh of the image by updating local state
+        setRetryingImages(prev => ({ ...prev, [label]: false }));
+        // Notify App-level state by dispatching a custom update
+        addToast(`${label} — image ready!`, 'success');
+        es.close();
+        // Force a small state update to re-render
+        window.dispatchEvent(new CustomEvent('feedbackImageRetried', { detail: { label, image_url: ev.image_url, headline: ev.headline, change_made: ev.change_made, source_ad: ev.source_ad } }));
+      }
+      if (ev.type === 'error') {
+        setRetryingImages(prev => ({ ...prev, [label]: false }));
+        addToast(`Retry failed: ${ev.message}`, 'error');
+        es.close();
+      }
+    };
+    es.onerror = () => { setRetryingImages(prev => ({ ...prev, [label]: false })); es.close(); };
+  };
+
+  const liveImages   = Object.entries(images);
+  const successCount = liveImages.filter(([, d]) => d.status === 'success').length;
+  const failedCount  = liveImages.filter(([, d]) => d.status === 'error').length;
+  const imageCount   = liveImages.length;
 
   if (!activeClient) return (
     <div className="g-empty">
@@ -92,7 +120,8 @@ export default function FeedbackPage({
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', marginBottom: 20 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
           <div style={{ flex: 1, fontSize: 13, color: 'var(--accent)', fontWeight: 500 }}>
-            Feedback loop running — {imageCount > 0 ? `${imageCount} image${imageCount > 1 ? 's' : ''} ready so far` : 'analyzing performance…'}
+            Feedback loop running — {successCount > 0 ? `${successCount} image${successCount > 1 ? 's' : ''} ready` : 'analyzing performance…'}
+          {failedCount > 0 && <span style={{ color: 'var(--red)', marginLeft: 6 }}>· {failedCount} rate-limited (will retry)</span>}
           </div>
         </div>
       )}
@@ -218,33 +247,66 @@ export default function FeedbackPage({
                 Generated Creatives
                 {running && <span style={{ fontSize: 13, fontWeight: 400, color: 'var(--text3)', fontFamily: 'var(--sans)', marginLeft: 10 }}>generating…</span>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{imageCount} image{imageCount !== 1 ? 's' : ''} ready · click to view full size</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                {successCount > 0 && <span style={{ color: 'var(--green)' }}>{successCount} ready</span>}
+                {failedCount  > 0 && <span style={{ color: 'var(--red)',   marginLeft: successCount > 0 ? 8 : 0 }}>{failedCount} failed — click Retry on each card</span>}
+                {successCount > 0 && ' · click to view full size'}
+              </div>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14 }}>
-            {liveImages.map(([label, data]) => (
-              <div
-                key={label}
-                onClick={() => setSelectedImg({ label, ...data })}
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', cursor: 'pointer', transition: 'all 0.15s', boxShadow: 'var(--shadow-sm)' }}
-                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-                onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
-              >
-                <div style={{ aspectRatio: '4/5', background: 'var(--surface3)', overflow: 'hidden', position: 'relative' }}>
-                  {data.image_url
-                    ? <img src={data.image_url} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text3)', fontSize: 12 }}>Generating…</div>
-                  }
-                  <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(79,70,229,0.9)', color: '#fff', fontFamily: 'var(--mono)', fontSize: 8, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.3 }}>NEW</div>
+            {liveImages.map(([label, data]) => {
+              const failed   = data.status === 'error';
+              const retrying = retryingImages[label];
+              return (
+                <div
+                  key={label}
+                  onClick={() => !failed && setSelectedImg({ label, ...data })}
+                  style={{
+                    background: 'var(--surface)',
+                    border: `1px solid ${failed ? 'rgba(220,38,38,0.25)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-lg)', overflow: 'hidden',
+                    cursor: failed ? 'default' : 'pointer',
+                    transition: 'all 0.15s', boxShadow: 'var(--shadow-sm)'
+                  }}
+                  onMouseEnter={e => { if (!failed) { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+                >
+                  <div style={{ aspectRatio: '4/5', background: failed ? 'var(--red-dim)' : 'var(--surface3)', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {data.image_url && !failed
+                      ? <img src={data.image_url} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      : failed
+                        ? <div style={{ textAlign: 'center', padding: 16 }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="1.5" style={{ marginBottom: 8 }}><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+                            <div style={{ fontSize: 11, color: 'var(--red)', marginBottom: 10 }}>Image failed</div>
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: 'var(--red)', color: '#fff', border: 'none', fontSize: 10 }}
+                              onClick={e => { e.stopPropagation(); retryImage(label); }}
+                              disabled={retrying}
+                            >
+                              {retrying
+                                ? <><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite', marginRight: 4 }}><path d="M12 2v4"/></svg>Retrying…</>
+                                : 'Retry'
+                              }
+                            </button>
+                          </div>
+                        : <div style={{ color: 'var(--text3)', fontSize: 11, fontFamily: 'var(--mono)' }}>Generating…</div>
+                    }
+                    {!failed && data.image_url && (
+                      <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(79,70,229,0.9)', color: '#fff', fontFamily: 'var(--mono)', fontSize: 8, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.3 }}>NEW</div>
+                    )}
+                  </div>
+                  <div style={{ padding: '10px 12px' }}>
+                    <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: failed ? 'var(--red)' : 'var(--accent)', marginBottom: 3, letterSpacing: 0.3 }}>{label}</div>
+                    {data.source_ad && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>Based on: {data.source_ad}</div>}
+                    {data.headline && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>"{data.headline}"</div>}
+                    {data.change_made && !failed && <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.4 }}>{data.change_made.slice(0, 70)}{data.change_made.length > 70 ? '…' : ''}</div>}
+                    {failed && <div style={{ fontSize: 10, color: 'var(--red)', lineHeight: 1.4 }}>Gemini rate limit — click Retry above</div>}
+                  </div>
                 </div>
-                <div style={{ padding: '10px 12px' }}>
-                  <div style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--accent)', marginBottom: 3, letterSpacing: 0.3 }}>{label}</div>
-                  {data.source_ad && <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 4 }}>Based on: {data.source_ad}</div>}
-                  {data.headline && <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>"{data.headline}"</div>}
-                  {data.change_made && <div style={{ fontSize: 10, color: 'var(--text2)', lineHeight: 1.4 }}>{data.change_made.slice(0, 70)}{data.change_made.length > 70 ? '…' : ''}</div>}
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Placeholder for in-progress images */}
             {running && (

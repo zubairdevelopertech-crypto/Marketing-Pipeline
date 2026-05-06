@@ -96,6 +96,63 @@ router.get('/:client/images/iteration_:num/:filename', (req, res) => {
   fs.createReadStream(imgPath).pipe(res);
 });
 
+// Retry a single failed feedback image — SSE endpoint
+router.get('/:client/retry-image/:iternum/:label', async (req, res) => {
+  const { client, iternum, label } = req.params;
+  const clientDir  = path.join(CLIENTS_DIR, client);
+  const outputDir  = path.join(clientDir, 'output');
+  const iterNum    = parseInt(iternum) || 2;
+  const imagesDir  = path.join(outputDir, 'images', `iteration_${iterNum}`);
+  const analysisPath = path.join(outputDir, `feedback_analysis_v${iterNum}.json`);
+
+  fs.mkdirSync(imagesDir, { recursive: true });
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  const send = (d) => { res.write(`data: ${JSON.stringify(d)}\n\n`); if (typeof res.flush === 'function') res.flush(); };
+
+  try {
+    if (!fs.existsSync(analysisPath)) throw new Error('No analysis found for this iteration');
+    const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf-8'));
+    const iteration = (analysis.iterations || []).find(it => it.label === label);
+    if (!iteration) throw new Error(`Label ${label} not found in iteration ${iterNum}`);
+    if (!iteration.nano_banana_prompt) throw new Error('No image prompt saved for this iteration');
+
+    send({ type: 'start', message: `Retrying ${label}…` });
+
+    const { generateImage }         = require('../utils/gemini');
+    const { uploadImageToStorage }  = require('../utils/db');
+
+    const imageBytes = await generateImage(iteration.nano_banana_prompt, [], {
+      retries: 5,
+      onRetry: (att, total, code, delaySec) => send({ type: 'progress', message: `Gemini busy (${code}), retry ${att}/${total} in ${delaySec}s…` })
+    });
+
+    const imagePath = path.join(imagesDir, `${label}.jpg`);
+    fs.writeFileSync(imagePath, imageBytes);
+
+    const storageUrl = await uploadImageToStorage(client, `iteration_${iterNum}/${label}`, imageBytes).catch(() => null);
+    const image_url  = storageUrl || `/api/feedback/${client}/images/iteration_${iterNum}/${label}.jpg`;
+
+    // Patch analysis file
+    const idx = analysis.iterations.findIndex(it => it.label === label);
+    if (idx !== -1) { analysis.iterations[idx].image_url = image_url; analysis.iterations[idx].status = 'success'; }
+    fs.writeFileSync(analysisPath, JSON.stringify(analysis, null, 2));
+
+    send({ type: 'complete', label, image_url, message: `✅ ${label} — image ready`, status: 'success',
+      headline: iteration.headline, subheadline: iteration.subheadline,
+      body_copy: iteration.body_copy, cta_text: iteration.cta_text,
+      change_made: iteration.change_made, source_ad: iteration.source_ad
+    });
+  } catch (e) {
+    send({ type: 'error', label, message: `❌ Retry failed: ${e.message}` });
+  } finally {
+    res.end();
+  }
+});
+
 // Download Meta CSV template
 router.get('/csv-template', (req, res) => {
   const rows = [
