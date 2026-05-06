@@ -7,7 +7,7 @@ const archiver = require('archiver');
 const CLIENTS_DIR = path.join(__dirname, '..', 'clients');
 const {
   getManifestForApi, getReviewForApi, normalizeCreativeImageUrl, getImageFromStorage,
-  getBriefsAsync, getManifestAsync
+  getBriefsAsync, getManifestAsync, deleteCreative, getMetaName
 } = require('../utils/db');
 
 // Serve generated image — filesystem first, Supabase Storage fallback
@@ -72,6 +72,7 @@ router.get('/:client', async (req, res) => {
 
     manifest.forEach(m => {
       m.image_url = normalizeCreativeImageUrl(slug, m);
+      if (!m.meta_name && m.format_id && m.version) m.meta_name = getMetaName(slug, m.format_id, m.version);
       if (scoreMap[m.label]) {
         m.score = scoreMap[m.label].total_score;
         m.ctr_tier = scoreMap[m.label].predicted_ctr_tier;
@@ -84,15 +85,20 @@ router.get('/:client', async (req, res) => {
 
       const promptPath = path.join(promptsDir, `${m.label}.json`);
       if (fs.existsSync(promptPath)) {
-        const p = JSON.parse(fs.readFileSync(promptPath));
-        m.headline = p.headline;
-        m.subheadline = p.subheadline;
-        m.body_copy = p.body_copy;
-        m.cta_text = p.cta_text;
+        try {
+          const p = JSON.parse(fs.readFileSync(promptPath));
+          m.headline = p.headline;
+          m.subheadline = p.subheadline;
+          m.body_copy = p.body_copy;
+          m.cta_text = p.cta_text;
+        } catch (_) {}
       }
     });
   } else {
-    manifest.forEach(m => { m.image_url = normalizeCreativeImageUrl(slug, m); });
+    manifest.forEach(m => {
+      m.image_url = normalizeCreativeImageUrl(slug, m);
+      if (!m.meta_name && m.format_id && m.version) m.meta_name = getMetaName(slug, m.format_id, m.version);
+    });
   }
 
   manifest.sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -252,6 +258,19 @@ router.get('/:client/download-top10', (req, res) => {
     if (fs.existsSync(imgPath)) archive.file(imgPath, { name: `${label}.jpg` });
   });
   archive.finalize();
+});
+
+// Delete a single creative — removes from DB, Storage, and filesystem
+router.delete('/:client/:label', async (req, res) => {
+  const { client, label } = req.params;
+  const safe = label.replace(/[^a-zA-Z0-9_.-]/g, '');
+  if (!safe) return res.status(400).json({ error: 'Invalid label' });
+  try {
+    await deleteCreative(client, safe);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;

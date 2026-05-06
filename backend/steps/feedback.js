@@ -13,7 +13,7 @@
 
 const { callClaudeJSON } = require('../utils/claude');
 const { generateImage }  = require('../utils/gemini');
-const { getContextAsync, getBriefsAsync, getManifestAsync, uploadImageToStorage } = require('../utils/db');
+const { getContextAsync, getBriefsAsync, getManifestAsync, uploadImageToStorage, getMetaName } = require('../utils/db');
 const fs   = require('fs');
 const path = require('path');
 
@@ -109,8 +109,13 @@ function num(v) {
   return parseFloat(String(v).replace(',', '.')) || 0;
 }
 
+// FORMAT mode = any ad_name matches FORMAT-XX-VERSION-X OR {brand}-{FormatName}-{Version}
+const META_NAME_RE = /^[\w-]+-(?:PAS|BAB|Proof|Offer|List|Hook|Compare|Result|Empathy|Bold|StickyNote|Notes|iMessage|ChatGPT|UsVsThem|Benefits|UGC|Cartoon|Lifestyle|Carousel|Review|NegPos)-[AB]$/i;
 function isFormatMode(rows) {
-  return rows.some(r => /^FORMAT-\d+-VERSION-[AB]/i.test(r.ad_name || ''));
+  return rows.some(r =>
+    /^FORMAT-\d+-VERSION-[AB]/i.test(r.ad_name || '') ||
+    META_NAME_RE.test(r.ad_name || '')
+  );
 }
 
 // ── Main feedback runner ──────────────────────────────────────────────────────
@@ -140,7 +145,12 @@ async function runFeedback(clientDir, csvPath, iterationNum, onProgress) {
   const briefsLookup   = {};
   const manifestLookup = {};
   briefs.forEach(b => { briefsLookup[`${b.format_id}-VERSION-${b.version}`] = b; });
-  manifest.forEach(m => { manifestLookup[m.label] = m; });
+  manifest.forEach(m => {
+    manifestLookup[m.label] = m;
+    // Also index by meta_name so "ray-ban-PAS-A" matches FORMAT-01-VERSION-A
+    const mname = m.meta_name || getMetaName(clientSlug, m.format_id, m.version);
+    if (mname) manifestLookup[mname] = m;
+  });
 
   // ── Detect mode ─────────────────────────────────────────────────────────────
   const formatMode = isFormatMode(metaRows);

@@ -273,6 +273,26 @@ async function loadAllDocsForSlug(slug) {
   return loadAllDocs(docsDir(slug));
 }
 
+// ── FORMAT short names → human-readable Meta ad names ─────────────────────────
+const FORMAT_SHORT = {
+  'FORMAT-01':'PAS',      'FORMAT-02':'BAB',       'FORMAT-03':'Proof',
+  'FORMAT-04':'Offer',    'FORMAT-05':'List',       'FORMAT-06':'Hook',
+  'FORMAT-07':'Compare',  'FORMAT-08':'Result',     'FORMAT-09':'Empathy',
+  'FORMAT-10':'Bold',     'FORMAT-11':'StickyNote', 'FORMAT-12':'Notes',
+  'FORMAT-13':'iMessage', 'FORMAT-14':'ChatGPT',    'FORMAT-15':'UsVsThem',
+  'FORMAT-16':'Benefits', 'FORMAT-17':'UGC',        'FORMAT-18':'Cartoon',
+  'FORMAT-19':'Lifestyle','FORMAT-20':'Carousel',   'FORMAT-21':'Review',
+  'FORMAT-22':'NegPos'
+};
+
+// Meta ad name: {brand}-{FormatShortName}-{Version}  e.g. ray-ban-PAS-A
+// This is what users paste into Meta Ads Manager as the ad name.
+function getMetaName(slug, formatId, version) {
+  const short = FORMAT_SHORT[formatId] || formatId.replace('FORMAT-', 'F');
+  const brand = slug.split('-').slice(0, 2).join('-').slice(0, 12);
+  return `${brand}-${short}-${version}`;
+}
+
 // ── SUPABASE STORAGE — images ──────────────────────────────────────────────────
 // Bucket name: 'creatives' (must be created as PUBLIC in Supabase → Storage dashboard)
 const STORAGE_BUCKET = 'creatives';
@@ -356,6 +376,12 @@ async function getBriefsAsync(slug) {
 // ── CREATIVE MANIFEST ─────────────────────────────────────────────────────────
 async function saveManifest(slug, manifest) {
   await ensureClientRow(slug);
+  // Stamp meta_name onto every entry if missing
+  manifest.forEach(m => {
+    if (!m.meta_name && m.format_id && m.version) {
+      m.meta_name = getMetaName(slug, m.format_id, m.version);
+    }
+  });
   writeJSON(jsonPath(slug, 'creative_manifest.json'), manifest);
 
   const db = getDB();
@@ -374,7 +400,7 @@ async function saveManifest(slug, manifest) {
     body_copy:   m.brief?.body_copy || m.body_copy || null,
     cta_text:    m.brief?.cta_text || m.cta_text || null,
     error:       m.error || null,
-    brief_json:  m.brief || null,
+    brief_json:  m.brief ? { ...m.brief, meta_name: m.meta_name } : null,
     updated_at:  new Date().toISOString()
   }));
   try {
@@ -382,6 +408,28 @@ async function saveManifest(slug, manifest) {
     if (error) console.warn('[Supabase] creatives upsert:', error.message);
   } catch (e) {
     console.warn('[Supabase] creatives error:', e.message);
+  }
+}
+
+async function deleteCreative(slug, label) {
+  // Remove from filesystem
+  const imgPath = path.join(outputDir(slug), 'images', `${label}.jpg`);
+  try { if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath); } catch (_) {}
+
+  // Remove from manifest JSON
+  const mPath = jsonPath(slug, 'creative_manifest.json');
+  if (fs.existsSync(mPath)) {
+    try {
+      const m = JSON.parse(fs.readFileSync(mPath, 'utf8'));
+      writeJSON(mPath, m.filter(r => r.label !== label));
+    } catch (_) {}
+  }
+
+  // Remove from Supabase DB
+  const db = getDB();
+  if (db) {
+    try { await db.from('creatives').delete().eq('client_slug', slug).eq('label', label); } catch (_) {}
+    try { await db.storage.from('creatives').remove([`${slug}/${label}.jpg`]); } catch (_) {}
   }
 }
 
@@ -508,9 +556,11 @@ module.exports = {
   saveContext, getContext, getContextAsync,
   saveBriefs,  getBriefs, getBriefsAsync,
   saveManifest, getManifest, getManifestForApi, getManifestAsync,
+  deleteCreative,
   saveReview,  getReview, getReviewForApi,
   getPipelineStatus,
   savePrompt, getPrompt,
   normalizeCreativeImageUrl,
   uploadImageToStorage, getImageFromStorage,
+  getMetaName, FORMAT_SHORT,
 };

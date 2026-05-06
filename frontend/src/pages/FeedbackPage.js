@@ -47,14 +47,17 @@ export default function FeedbackPage({ activeClient, addToast }) {
     return () => window.removeEventListener('keydown', h);
   }, []);
 
-  const uploadCSV = async () => {
-    if (!csvFile) return addToast('Select a CSV file first', 'error');
+  // Auto-upload as soon as user picks a file
+  const onFileSelected = async (file) => {
+    if (!file) return;
+    setCsvFile(file);
+    setCsvUploaded(false);
     const fd = new FormData();
-    fd.append('csv', csvFile);
+    fd.append('csv', file);
     try {
       const res = await fetch(`/api/feedback/${slug}/upload-csv`, { method: 'POST', body: fd });
       const d   = await res.json();
-      if (d.success) { setCsvUploaded(true); addToast('CSV uploaded', 'success'); }
+      if (d.success) { setCsvUploaded(true); addToast(`CSV saved — click "Run Analysis" to start`, 'success'); }
       else addToast(d.error || 'Upload failed', 'error');
     } catch { addToast('Upload error', 'error'); }
   };
@@ -169,60 +172,105 @@ export default function FeedbackPage({ activeClient, addToast }) {
         </div>
       </div>
 
-      {/* ── CSV upload ───────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* ── Naming convention guide ─────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-header">
-          <div className="card-title">Upload Meta Performance CSV</div>
-          {csvUploaded && <span className="tag tag-green"><IconCheck /> Ready</span>}
+          <div className="card-title">Ad naming convention for Meta</div>
+          <span className="tag tag-accent">Important</span>
         </div>
         <div className="card-body">
-          <div
-            className="upload-zone"
-            style={{ padding: 24, marginBottom: 12 }}
-            onClick={() => document.getElementById('fb-csv-input').click()}
-          >
-            <input id="fb-csv-input" type="file" accept=".csv" style={{ display: 'none' }}
-              onChange={e => { setCsvFile(e.target.files[0]); setCsvUploaded(false); }} />
-            <div style={{ marginBottom: 8 }}><IconFile /></div>
-            <div className="upload-zone-title" style={{ fontSize: 13 }}>
-              {csvFile ? csvFile.name : 'Drop Meta CSV here or click to browse'}
-            </div>
-            <div className="upload-zone-sub">Dutch or English column names both accepted</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.7, marginBottom: 14 }}>
+            When you upload our generated creatives to Meta Ads Manager, use the <strong>Meta Ad Name</strong> shown on each creative card (visible in the Creatives gallery).
+            It follows the pattern: <code style={{ background: 'var(--surface3)', padding: '1px 6px', borderRadius: 3, fontFamily: 'var(--mono)', fontSize: 11 }}>{'{brand}-{FormatName}-{Version}'}</code>
           </div>
-
-          {csvFile && !csvUploaded && (
-            <button className="btn btn-primary btn-sm" onClick={uploadCSV}>
-              <IconUpload /> Upload {csvFile.name}
-            </button>
-          )}
-
-          {csvUploaded && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--green)', padding: '8px 12px', background: 'var(--green-dim)', border: '1px solid rgba(5,150,105,0.2)', borderRadius: 8 }}>
-              <IconCheck /> CSV uploaded and ready for analysis
-            </div>
-          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 14 }}>
+            {['ray-ban-PAS-A', 'ray-ban-UGC-B', 'ray-ban-Review-A', 'ray-ban-Cartoon-B', 'bespoke-Empathy-A', 'nike-Bold-B'].map(ex => (
+              <div key={ex} style={{ fontFamily: 'var(--mono)', fontSize: 10.5, padding: '6px 10px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)' }}>{ex}</div>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>
+            When you export the CSV from Meta and upload it here, the system automatically matches these names to the original creatives to pull their full copy and visual context for AI analysis.
+            <br/><strong>Multiple businesses:</strong> the brand prefix (first part) separates them — e.g. <code style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>nike-PAS-A</code> vs <code style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>rayban-PAS-A</code>.
+            You can also use any custom name (Option B — free-form mode) and the system still works.
+          </div>
         </div>
       </div>
 
-      {/* ── Run ─────────────────────────────────────────────────────────── */}
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-header"><div className="card-title">Run Analysis + Generate Improved Creatives</div></div>
-        <div className="card-body">
-          <div style={{ marginBottom: 16 }}>
-            <label className="form-label">Iteration Number</label>
-            <select className="form-input" value={iteration} onChange={e => setIteration(Number(e.target.value))} disabled={running}
-              style={{ maxWidth: 320 }}>
-              <option value={2}>Iteration 2 — first feedback run</option>
-              <option value={3}>Iteration 3</option>
-              <option value={4}>Iteration 4</option>
-              <option value={5}>Iteration 5</option>
-            </select>
+      {/* ── What gets generated ─────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+        <div style={{ padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 6 }}>Option A — FORMAT labels</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>How many creatives?</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.6 }}>
+            Claude identifies which FORMAT ads <strong>underperformed</strong> and generates <strong>improved versions</strong> of those specific ones.
+            Typically 3–6 new creatives per run — only the ones that need improvement, not all of them.
           </div>
-          <button className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}
-            onClick={runFeedback} disabled={running || !csvUploaded}>
-            {running ? <><IconSpin /> Analyzing…</> : <>Run Feedback Analysis</>}
-          </button>
-          {!csvUploaded && <div style={{ fontSize: 11, color: 'var(--text3)', textAlign: 'center', marginTop: 6 }}>Upload CSV above first</div>}
+        </div>
+        <div style={{ padding: '14px 16px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+          <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--amber)', marginBottom: 6 }}>Option B — Custom names</div>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>How many creatives?</div>
+          <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.6 }}>
+            Claude maps your <strong>top 4–8 winning concepts</strong> to the FORMAT library and generates new static image ads.
+            For your CSV: "Remote werken" and "10k geld terug" were your top performers — those angles become new FORMAT-based static ads.
+          </div>
+        </div>
+      </div>
+
+      {/* ── CSV upload + run (combined) ──────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header">
+          <div className="card-title">Upload CSV &amp; Run Analysis</div>
+          {csvUploaded && <span className="tag tag-green"><IconCheck /> CSV ready</span>}
+        </div>
+        <div className="card-body">
+          {/* Step 1: Drop CSV */}
+          <div
+            className={`upload-zone ${csvUploaded ? 'upload-zone-done' : ''}`}
+            style={{ padding: 20, marginBottom: 16, cursor: 'pointer' }}
+            onClick={() => document.getElementById('fb-csv-input').click()}
+          >
+            <input id="fb-csv-input" type="file" accept=".csv" style={{ display: 'none' }}
+              onChange={e => e.target.files[0] && onFileSelected(e.target.files[0])} />
+            <div style={{ marginBottom: 8 }}>
+              {csvUploaded
+                ? <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="20 6 9 17 4 12"/></svg>
+                : <IconFile />
+              }
+            </div>
+            <div className="upload-zone-title" style={{ fontSize: 13 }}>
+              {csvUploaded
+                ? `✓ ${csvFile?.name || 'CSV saved'} — ready to run`
+                : (csvFile ? `Uploading ${csvFile.name}…` : 'Drop Meta CSV here or click to browse')
+              }
+            </div>
+            <div className="upload-zone-sub">
+              {csvUploaded ? 'Click to replace with a different file' : 'Dutch or English columns both accepted · auto-saves on select'}
+            </div>
+          </div>
+
+          {/* Step 2: Iteration + Run */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Iteration</label>
+              <select className="form-input" value={iteration} onChange={e => setIteration(Number(e.target.value))} disabled={running}>
+                <option value={2}>Iteration 2 — first feedback run</option>
+                <option value={3}>Iteration 3</option>
+                <option value={4}>Iteration 4</option>
+                <option value={5}>Iteration 5</option>
+              </select>
+            </div>
+            <button
+              className="btn btn-primary btn-lg"
+              style={{ flexShrink: 0, minWidth: 200, justifyContent: 'center' }}
+              onClick={runFeedback}
+              disabled={running || !csvUploaded}
+            >
+              {running ? <><IconSpin /> Analyzing…</> : <>Run Feedback Analysis</>}
+            </button>
+          </div>
+          {!csvUploaded && !csvFile && (
+            <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>Drop your Meta CSV above — it saves automatically, then run the analysis</div>
+          )}
         </div>
       </div>
 

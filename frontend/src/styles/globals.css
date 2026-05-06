@@ -361,6 +361,9 @@ body {
 .upload-zone:hover, .upload-zone.dragover {
   border-color: var(--accent); background: var(--accent-dim);
 }
+.upload-zone.upload-zone-done {
+  border-color: var(--green); background: var(--green-dim);
+}
 .upload-zone-icon { font-size: 36px; margin-bottom: 12px; }
 .upload-zone-title { font-family: var(--display); font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
 .upload-zone-sub { font-size: 12px; color: var(--text2); }
@@ -797,6 +800,18 @@ select.form-input { cursor: pointer; }
 .g-tag-blue  { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-border); }
 .g-tag-gray  { background: var(--surface3); color: var(--text3); border-color: var(--border); }
 .g-tag-red   { background: var(--red-dim); color: var(--red); border-color: rgba(220,38,38,0.18); }
+
+/* ── Delete button — appears on thumb hover ── */
+.g-card-delete {
+  position: absolute; top: 6px; left: 6px;
+  width: 22px; height: 22px; border-radius: 5px;
+  background: rgba(220,38,38,0.85); border: none; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0; transition: opacity 0.15s;
+  z-index: 5;
+}
+.g-card:hover .g-card-delete { opacity: 1; }
+.g-card-delete:hover { background: var(--red); }
 
 /* ── Retry button inside failed thumb ── */
 .g-retry-btn {

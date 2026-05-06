@@ -9,6 +9,7 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
   const [retrying, setRetrying] = useState(false);
   const [retryLogs, setRetryLogs] = useState([]);
   const [retryingImages, setRetryingImages] = useState({});
+  const [deleting, setDeleting] = useState({});
 
   const slug = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
 
@@ -60,6 +61,22 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
       }
     };
     es.onerror = () => { es.close(); setRetrying(false); setTimeout(loadCreatives, 500); };
+  };
+
+  const deleteCreative = async (label, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete ${label}? This removes it from the database and storage.`)) return;
+    setDeleting(prev => ({ ...prev, [label]: true }));
+    try {
+      const res = await fetch(`/api/creatives/${slug}/${encodeURIComponent(label)}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (d.success) {
+        setCreatives(prev => prev.filter(c => c.label !== label));
+        if (selected?.label === label) setSelected(null);
+        addToast(`Deleted ${label}`, 'info');
+      } else addToast(d.error || 'Delete failed', 'error');
+    } catch { addToast('Delete failed', 'error'); }
+    setDeleting(prev => ({ ...prev, [label]: false }));
   };
 
   const retryImage = (label) => {
@@ -208,7 +225,7 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
         {filtered.map(c => (
           <div
             key={c.label}
-            className={`g-card ${c.is_top10 ? 'g-card-top' : ''} ${c.status === 'error' ? 'g-card-failed' : ''}`}
+            className={`g-card ${c.is_top10 ? 'g-card-top' : ''} ${c.status === 'error' || (!c.image_url && c.status !== 'prompt_only') ? 'g-card-failed' : ''}`}
             onClick={() => setSelected(c)}
           >
             <div className="g-thumb">
@@ -234,14 +251,28 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
               )}
               {c.is_top10 && <div className="g-badge g-badge-top">Top</div>}
               {c.score && <div className="g-badge g-badge-score">{c.score}</div>}
+              {/* Delete button — top-left on hover */}
+              <button
+                className="g-card-delete"
+                title="Delete this creative"
+                onClick={e => deleteCreative(c.label, e)}
+                disabled={deleting[c.label]}
+              >
+                {deleting[c.label]
+                  ? <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83"/></svg>
+                  : <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                }
+              </button>
             </div>
             <div className="g-info">
               <div className="g-format-name">{c.brief?.format_name || 'Format'}</div>
               <div className="g-label">{c.label}</div>
+              {c.meta_name && <div style={{ fontFamily: 'var(--mono)', fontSize: 8.5, color: 'var(--accent)', marginBottom: 4, letterSpacing: 0.3 }}>Meta: {c.meta_name}</div>}
               {c.headline && <div className="g-headline">"{c.headline}"</div>}
               <div className="g-tags">
                 {c.ctr_tier && <span className={`g-tag ${c.ctr_tier === 'high' ? 'g-tag-green' : c.ctr_tier === 'medium' ? 'g-tag-blue' : 'g-tag-gray'}`}>{c.ctr_tier}</span>}
                 {c.status === 'error' && <span className="g-tag g-tag-red">Failed</span>}
+                {!c.image_url && c.status !== 'error' && c.status !== 'prompt_only' && <span className="g-tag g-tag-red">No image</span>}
               </div>
             </div>
           </div>
@@ -292,6 +323,22 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
 
                 {/* Details pane */}
                 <div className="g-modal-details">
+                  {/* Meta ad name — prominently shown */}
+                  {selected.meta_name && (
+                    <div style={{ padding: '10px 14px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <div>
+                        <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 3 }}>Meta Ad Name — use this when uploading to Meta</div>
+                        <div style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'var(--text)', letterSpacing: 0.3 }}>{selected.meta_name}</div>
+                      </div>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { navigator.clipboard.writeText(selected.meta_name); addToast('Copied!', 'success'); }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy
+                      </button>
+                    </div>
+                  )}
                   {/* Scores */}
                   {(selected.score || selected.ctr_tier) && (
                     <div className="g-modal-scores">
