@@ -1,6 +1,6 @@
 const { callClaudeJSON } = require('../utils/claude');
 const { generateImage } = require('../utils/gemini');
-const { saveManifest, uploadImageToStorage } = require('../utils/db');
+const { saveManifest, uploadImageToStorage, getBrandAssetPaths } = require('../utils/db');
 const fs = require('fs');
 const path = require('path');
 
@@ -190,7 +190,7 @@ function getFormatRules(formatId) {
   };
 }
 
-async function runCreative(clientDir, briefs, context, onProgress, skipImages = false) {
+async function runCreative(clientDir, briefs, context, onProgress, skipImages = false, ratios = ['4:5']) {
   const clientSlug = path.basename(clientDir);
   const outputDir = path.join(clientDir, 'output');
   const imagesDir = path.join(outputDir, 'images');
@@ -198,6 +198,16 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
   const manifestPath = path.join(outputDir, 'creative_manifest.json');
   fs.mkdirSync(imagesDir, { recursive: true });
   fs.mkdirSync(promptsDir, { recursive: true });
+
+  // Load client brand assets once (product photos, logos) — passed as extra Gemini references
+  const brandAssets = getBrandAssetPaths(clientSlug).slice(0, 5);
+  if (brandAssets.length > 0) {
+    onProgress({ step: 'creative', status: 'running', message: `🖼️ Found ${brandAssets.length} brand asset${brandAssets.length > 1 ? 's' : ''} — will use as visual reference for all ads` });
+  }
+
+  // Validate ratios — only accept supported values
+  const validRatios = [...new Set(ratios.filter(r => ['4:5', '1:1', '9:16'].includes(r)))];
+  if (!validRatios.length) validRatios.push('4:5');
 
   // ── CRITICAL: Load existing manifest so we never lose previously generated images ──
   // Each run MERGES results — new generations update their label, all others are preserved
@@ -208,18 +218,21 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
   const mergedResults = [...existingManifest]; // start with ALL existing creatives
 
   const validBriefs = briefs.filter(b => !b.error);
-  const total = validBriefs.length;
+  const total = validBriefs.length * validRatios.length;
   let count = 0;
 
   onProgress({
     step: 'creative',
     status: 'running',
-    message: `🎨 Generating ${total} creatives (Claude prompt + Gemini image per creative)...`
+    message: `🎨 Generating ${total} creatives — ${validBriefs.length} formats × ${validRatios.length} ratio${validRatios.length > 1 ? 's' : ''} (${validRatios.join(', ')})${brandAssets.length > 0 ? ` + ${brandAssets.length} brand assets` : ''}...`
   });
 
   for (const brief of validBriefs) {
+    for (const ratio of validRatios) {
     count++;
-    const label = `${brief.format_id}-VERSION-${brief.version}`;
+    // 4:5 uses legacy label (no suffix) for backward compatibility; other ratios add suffix
+    const ratioSuffix = ratio === '4:5' ? '' : `-${ratio.replace(':', 'x')}`;
+    const label = `${brief.format_id}-VERSION-${brief.version}${ratioSuffix}`;
 
     onProgress({
       step: 'creative',
@@ -229,10 +242,10 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
       imageStatus: { label, status: 'building_prompt', index: count, total }
     });
 
-    const result = { label, format_id: brief.format_id, version: brief.version, brief, status: 'pending' };
+    const result = { label, format_id: brief.format_id, version: brief.version, ratio, brief, status: 'pending' };
 
     try {
-      const imagePrompt = await generateImagePrompt(brief, context);
+      const imagePrompt = await generateImagePrompt(brief, context, { ratio, brandAssets });
 
       const promptPath = path.join(promptsDir, `${label}.json`);
       fs.writeFileSync(promptPath, JSON.stringify(imagePrompt, null, 2));
@@ -253,20 +266,21 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
           imageStatus: { label, status: 'generating', index: count, total }
         });
 
-        // Pass BOTH reference images so Gemini learns the FORMAT PATTERN
-        // (what's common between 2 winning examples) rather than copying one
+        // Pass format reference images first (layout structure), then brand assets (actual product)
         const refImages = getAllReferenceImages(brief.format_id);
-        if (refImages.length > 0) {
+        const allRefs   = [...refImages, ...brandAssets]; // Gemini sees format refs, then brand images
+        if (allRefs.length > 0) {
           onProgress({
             step: 'creative', status: 'running',
-            message: `   📐 [${count}/${total}] ${label} — Loading ${refImages.length} format reference${refImages.length > 1 ? 's' : ''}...`,
+            message: `   📐 [${count}/${total}] ${label} — ${refImages.length} format ref${refImages.length !== 1 ? 's' : ''}${brandAssets.length > 0 ? ` + ${brandAssets.length} brand asset${brandAssets.length > 1 ? 's' : ''}` : ''} · ratio ${ratio}`,
             imageStatus: { label, status: 'generating', index: count, total }
           });
         }
 
         let attempt = 0;
-        const imageBytes = await generateImage(imagePrompt.nano_banana_prompt, refImages, {
+        const imageBytes = await generateImage(imagePrompt.nano_banana_prompt, allRefs, {
           retries: 3,
+          aspectRatio: ratio,
           onRetry: (att, total, errorCode, delaySec) => {
             attempt = att;
             onProgress({
@@ -313,7 +327,8 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
     await saveManifest(clientSlug, mergedResults);
 
     await new Promise(r => setTimeout(r, 2000));
-  }
+    } // end ratio loop
+  } // end brief loop
 
   const successful = mergedResults.filter(r => r.status === 'success').length;
   const total_stored = mergedResults.length;
@@ -348,13 +363,33 @@ const VERSION_SCENE_VARIANTS = {
   }
 };
 
-async function generateImagePrompt(brief, context) {
+// Per-ratio safe zone and dimension specs for Meta ads
+const RATIO_SPECS = {
+  '4:5': {
+    dimensions: '1080×1350px',
+    name: 'Feed (portrait)',
+    safeZone: 'horizontal 8-92%, vertical 12-82%. CTA at 65-80% from top. Bottom 18% and top 12% are DANGER ZONES — Meta overlays UI here. Keep bottom 18% as atmospheric background only.',
+  },
+  '1:1': {
+    dimensions: '1080×1080px',
+    name: 'Feed (square)',
+    safeZone: 'horizontal 8-92%, vertical 10-90%. CTA at 60-78% from top. Keep all edges clear with 8% margin. Equal visual weight expected on all sides.',
+  },
+  '9:16': {
+    dimensions: '1080×1920px',
+    name: 'Reels / Stories',
+    safeZone: 'VERY RESTRICTIVE — horizontal 6-94%, vertical 14-65% ONLY. Bottom 35% is a DANGER ZONE (Instagram shows likes, comments, captions here). Top 14% is a DANGER ZONE. ALL text and CTAs must be packed into the middle 51% of height. Keep composition tight and centered vertically.',
+  },
+};
+
+async function generateImagePrompt(brief, context, { ratio = '4:5', brandAssets = [] } = {}) {
   const isNL = context.target_audience?.location?.toLowerCase().includes('netherlands') ||
                context.target_audience?.location?.toLowerCase().includes('nederland');
   const lang = isNL ? 'Dutch (Nederlands)' : 'English';
 
   const rules = getFormatRules(brief.format_id);
   const versionScene = VERSION_SCENE_VARIANTS[brief.version] || VERSION_SCENE_VARIANTS.A;
+  const ratioSpec = RATIO_SPECS[ratio] || RATIO_SPECS['4:5'];
 
   const prompt = `You are a world-class Meta ad creative director. Generate a production-ready image prompt for Gemini image generation.
 
@@ -402,7 +437,8 @@ Return ONLY valid JSON:
 {
   "format_name": "${brief.format_name}",
   "version": "${brief.version}",
-  "dimensions": "1080x1350",
+  "ratio": "${ratio}",
+  "dimensions": "${ratioSpec.dimensions}",
   "headline": "${brief.headline}",
   "subheadline": "${brief.subheadline}",
   "body_copy": "${brief.body_copy}",
@@ -412,7 +448,10 @@ Return ONLY valid JSON:
   "brand_primary_color": "${context.brand_primary_color || '#2563EB'}",
   "brand_secondary_color": "${context.brand_secondary_color || '#FFFFFF'}",
   "logo_placement": "top-right",
-  "nano_banana_prompt": "Write a 320-400 word image generation prompt for Gemini. Write it like a film director briefing a cinematographer — pure visual descriptions only.\\n\\n⚠️ ABSOLUTE RULE: The prompt you write must NEVER contain any of the following as words or labels in the scene: zone numbers, position labels (top-right, middle, bottom, upper, lower), pixel values (80px, 120px, 20px), layout annotations, design spec text, bracketed instructions, or any word that sounds like a technical design document. If Gemini sees these words in your prompt, it will literally paint them into the image. Write ONLY cinematic visual descriptions.\\n\\n📐 META SAFE ZONE (CRITICAL for ad performance): This is a 4:5 (1080×1350px) Meta feed ad. Meta overlays UI on the edges — ads with text in danger zones get higher CPM and lower performance. MANDATORY placement rules:\\n• All text, headlines, and CTAs must sit in the SAFE CENTER: horizontally from 8% to 92% of width, vertically from 12% to 82% of height.\\n• The CTA button must land between 65%-80% from the top of the image.\\n• The brand logo sits in the upper portion but with a clear margin from the very top edge.\\n• The bottom 18% of the image is a DANGER ZONE — keep it visually calm (background only, no text).\\n• The top 12% is also a DANGER ZONE — keep it as atmospheric background, headline starts below it.\\n\\nREFERENCE IMAGES: Real winning ads in the '${brief.format_name}' format are attached. Study their visual structure: how the scene is divided, where the eye travels, what the composition feels like. Then create a completely new ad that has the same visual rhythm — different people, different environment, different colors, different content. Do not copy. Do not annotate.\\n\\nCOMPOSITION TO ACHIEVE: ${rules.composition}\\n\\nVISUAL IDENTITY for this Version ${brief.version}: ${versionScene.mood} mood. ${versionScene.setting}. ${versionScene.person}. Color palette: ${versionScene.palette}.\\n\\nSCENE: Create a specific, cinematic, scroll-stopping scene for the target audience. Make it feel real and human, not like a stock photo.\\n\\nTEXT that must appear on the image (write exactly in ${lang}, readable and bold):\\n• Headline large: \\"${brief.headline}\\"\\n• Subheadline: \\"${brief.subheadline}\\"\\n• CTA on a rounded button in ${context.brand_primary_color || '#2563EB'}: \\"${brief.cta_text}\\"\\n• Optional: one short supporting line (max 8 words)\\n\\nBRAND: '${context.client_name}' logo placed in the upper area with safe margin. Primary color ${context.brand_primary_color || '#2563EB'}.\\n\\nQUALITY: Portrait 4:5. Mobile-first. High contrast text. No AI artifacts. Looks like a real Meta ad.\\n\\nDO NOT INCLUDE in the scene: ${rules.mustExclude.join(', ')}."
+  "nano_banana_prompt": "Write a 320-400 word image generation prompt for Gemini. Write it like a film director briefing a cinematographer — pure visual descriptions only.\\n\\n⚠️ ABSOLUTE RULE: NEVER include position labels, pixel values, zone numbers, or bracketed technical annotations in the prompt — Gemini paints them literally as text. Write ONLY cinematic visual descriptions.\\n\\n📐 META SAFE ZONE for ${ratioSpec.name} (${ratioSpec.dimensions}): ${ratioSpec.safeZone}\\n\\n${brandAssets.length > 0
+    ? `🖼️ CLIENT BRAND ASSETS: The last ${brandAssets.length} reference image(s) passed to Gemini are the client's OWN product photos / brand imagery. USE THEM DIRECTLY in the ad — feature the actual product, show the real brand imagery, or incorporate the visual style. The first ${Math.max(0, 2 - brandAssets.length)} reference image(s) are format layout examples (for structure only).`
+    : 'REFERENCE IMAGES: Format layout examples are attached — study structure only, create new content.'
+  }\\n\\nCOMPOSITION TO ACHIEVE (${brief.format_name} format): ${rules.composition}\\n\\nVISUAL IDENTITY Version ${brief.version}: ${versionScene.mood} mood. ${versionScene.setting}. ${versionScene.person}. Color palette: ${versionScene.palette}.\\n\\nTEXT on the image (write exactly in ${lang}, readable and bold — within the safe zone above):\\n• Headline: \\"${brief.headline}\\"\\n• Subheadline: \\"${brief.subheadline}\\"\\n• CTA button in ${context.brand_primary_color || '#2563EB'}: \\"${brief.cta_text}\\"\\n\\nBRAND: '${context.client_name}' logo in the upper area with clear margin. Primary: ${context.brand_primary_color || '#2563EB'}.\\n\\nQUALITY: ${ratio} ratio. Mobile-first. High contrast text. No AI artifacts. Real Meta ad look.\\n\\nDO NOT INCLUDE: ${rules.mustExclude.join(', ')}."
 }`;
 
   return await callClaudeJSON(prompt, { maxTokens: 2500 });

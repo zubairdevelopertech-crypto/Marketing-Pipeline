@@ -6,11 +6,16 @@ function formatSize(bytes) {
 }
 
 export default function UploadPage({ activeClient, addToast, navigate }) {
-  const [existingDocs, setExistingDocs] = useState([]);
-  const [pendingFiles, setPendingFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const [dragover, setDragover] = useState(false);
-  const inputRef = useRef();
+  const [existingDocs,   setExistingDocs]   = useState([]);
+  const [pendingFiles,   setPendingFiles]   = useState([]);
+  const [uploading,      setUploading]      = useState(false);
+  const [dragover,       setDragover]       = useState(false);
+  // Brand assets
+  const [brandAssets,    setBrandAssets]    = useState([]);
+  const [brandDragover,  setBrandDragover]  = useState(false);
+  const [brandUploading, setBrandUploading] = useState(false);
+  const inputRef      = useRef();
+  const brandInputRef = useRef();
 
   const slug = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
 
@@ -23,11 +28,48 @@ export default function UploadPage({ activeClient, addToast, navigate }) {
     } catch (_) {}
   }, [slug]);
 
+  const loadBrandAssets = useCallback(async () => {
+    if (!slug) return;
+    try {
+      const res  = await fetch(`/api/clients/${slug}/brand-assets`);
+      const data = await res.json();
+      setBrandAssets(data.assets || []);
+    } catch (_) {}
+  }, [slug]);
+
   useEffect(() => {
     setExistingDocs([]);
     setPendingFiles([]);
+    setBrandAssets([]);
     loadExistingDocs();
-  }, [loadExistingDocs]);
+    loadBrandAssets();
+  }, [loadExistingDocs, loadBrandAssets]);
+
+  const uploadBrandAssets = async (files) => {
+    const imgs = Array.from(files).filter(f => /\.(jpe?g|png|webp|gif)$/i.test(f.name));
+    if (!imgs.length) return addToast('Only image files (.jpg .png .webp) are accepted', 'error');
+    if (brandAssets.length + imgs.length > 10) return addToast('Maximum 10 brand assets per client', 'error');
+    setBrandUploading(true);
+    const fd = new FormData();
+    imgs.forEach(f => fd.append('assets', f));
+    try {
+      const res  = await fetch(`/api/clients/${slug}/brand-assets`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.success) {
+        addToast(`${data.count} brand image${data.count > 1 ? 's' : ''} saved`, 'success');
+        await loadBrandAssets();
+      } else addToast(data.error || 'Upload failed', 'error');
+    } catch (e) { addToast('Upload error: ' + e.message, 'error'); }
+    setBrandUploading(false);
+  };
+
+  const deleteBrandAsset = async (name) => {
+    try {
+      await fetch(`/api/clients/${slug}/brand-assets/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      setBrandAssets(prev => prev.filter(a => a.name !== name));
+      addToast(`Removed ${name}`, 'info');
+    } catch (e) { addToast('Delete failed', 'error'); }
+  };
 
   const addFiles = (newFiles) => {
     const arr = Array.from(newFiles).filter(f =>
@@ -212,6 +254,80 @@ export default function UploadPage({ activeClient, addToast, navigate }) {
           </div>
         </>
       )}
+
+      {/* ── Brand Assets ─────────────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: 28 }}>
+        <div className="card-header">
+          <div>
+            <div className="card-title">Brand Assets <span className="tag tag-muted" style={{ marginLeft: 6, verticalAlign: 'middle' }}>Optional</span></div>
+          </div>
+          {brandAssets.length > 0 && <span className="tag tag-green">{brandAssets.length} uploaded</span>}
+        </div>
+        <div className="card-body" style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 1.6, paddingBottom: 16 }}>
+          <p style={{ marginTop: 0 }}>
+            Upload <strong>product photos, brand photos, or your logo</strong> here. Gemini will use your actual images as visual references when generating ads — your real product appears in the creative instead of a generic version. You can upload up to 10 images.
+          </p>
+          <p style={{ marginBottom: 16 }}>
+            <strong>Good to upload:</strong> product shots, lifestyle photos from your brand, team photos, logo files (.png with transparent background works best). <strong>If you skip this, ads are created from scratch</strong> — both approaches work.
+          </p>
+
+          {/* Existing brand assets grid */}
+          {brandAssets.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10, marginBottom: 16 }}>
+              {brandAssets.map(a => (
+                <div key={a.name} style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface2)' }}>
+                  <img
+                    src={a.url}
+                    alt={a.name}
+                    style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }}
+                    onError={e => { e.target.style.display = 'none'; }}
+                  />
+                  <button
+                    onClick={() => deleteBrandAsset(a.name)}
+                    style={{ position: 'absolute', top: 4, right: 4, background: 'rgba(0,0,0,0.65)', border: 'none', color: '#fff', borderRadius: 4, width: 20, height: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}
+                    title="Remove"
+                  >✕</button>
+                  <div style={{ padding: '4px 6px', fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {a.name.length > 14 ? a.name.slice(0, 12) + '…' : a.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Brand asset drop zone */}
+          {brandAssets.length < 10 && (
+            <div
+              className={`upload-zone ${brandDragover ? 'dragover' : ''}`}
+              style={{ padding: 28 }}
+              onClick={() => brandInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setBrandDragover(true); }}
+              onDragLeave={() => setBrandDragover(false)}
+              onDrop={e => { e.preventDefault(); setBrandDragover(false); uploadBrandAssets(e.dataTransfer.files); }}
+            >
+              <input
+                type="file" ref={brandInputRef} multiple accept=".jpg,.jpeg,.png,.webp,.gif"
+                style={{ display: 'none' }}
+                onChange={e => uploadBrandAssets(e.target.files)}
+              />
+              <div style={{ marginBottom: 10 }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth="1.5"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="m3 14 5-5 4 4 3-3 4 4"/></svg>
+              </div>
+              <div className="upload-zone-title" style={{ fontSize: 13 }}>
+                {brandUploading ? 'Uploading…' : 'Drop product photos or logo here'}
+              </div>
+              <div className="upload-zone-sub">
+                .jpg .png .webp · Up to {10 - brandAssets.length} more image{10 - brandAssets.length !== 1 ? 's' : ''} · Max 30 MB each
+              </div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+                {['.jpg', '.png', '.webp', '.gif'].map(ext => (
+                  <span key={ext} className="tag tag-muted">{ext}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -32,8 +32,12 @@ router.get('/:client/run', async (req, res) => {
   const {
     steps = 'research,strategy,creative,review',
     skipImages = 'false',
-    formatFilter = 'all'
+    formatFilter = 'all',
+    ratios = '4:5'
   } = req.query;
+
+  const selectedRatios = ratios.split(',').map(r => r.trim()).filter(r => ['4:5', '1:1', '9:16'].includes(r));
+  if (!selectedRatios.length) selectedRatios.push('4:5');
 
   const stepsToRun = steps.split(',');
 
@@ -85,7 +89,7 @@ router.get('/:client/run', async (req, res) => {
 
     // STEP 3: CREATIVE
     if (stepsToRun.includes('creative')) {
-      creativeResults = await runCreative(clientDir, briefs, context, onProgress, skipImages === 'true');
+      creativeResults = await runCreative(clientDir, briefs, context, onProgress, skipImages === 'true', selectedRatios);
     } else {
       creativeResults = await getManifestAsync(clientSlug);
       if (!creativeResults?.length) throw new Error('No manifest. Run creative step first.');

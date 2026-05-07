@@ -94,6 +94,53 @@ async function saveClient(meta) {
   }, 'slug');
 }
 
+// ── BRAND ASSETS (product photos / logos uploaded by client) ─────────────────
+function brandAssetsDir(slug) { return path.join(clientDir(slug), 'brand_assets'); }
+
+function getBrandAssetPaths(slug) {
+  const dir = brandAssetsDir(slug);
+  if (!fs.existsSync(dir)) return [];
+  try {
+    return fs.readdirSync(dir)
+      .filter(f => /\.(jpe?g|png|webp|gif)$/i.test(f) && !f.startsWith('.'))
+      .map(f => path.join(dir, f));
+  } catch { return []; }
+}
+
+async function listBrandAssets(slug) {
+  return getBrandAssetPaths(slug).map(p => ({
+    name: path.basename(p),
+    url:  `/api/clients/${slug}/brand-assets/${encodeURIComponent(path.basename(p))}`,
+    size: (() => { try { return fs.statSync(p).size; } catch { return 0; } })()
+  }));
+}
+
+async function saveBrandAsset(slug, filename, buffer) {
+  const dir  = brandAssetsDir(slug);
+  fs.mkdirSync(dir, { recursive: true });
+  const safe = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, '_');
+  fs.writeFileSync(path.join(dir, safe), buffer);
+  const db = getDB();
+  if (db) {
+    try {
+      const ext  = path.extname(safe).slice(1).toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      await db.storage.from('creatives').upload(`brand-assets/${slug}/${safe}`, buffer, { contentType: mime, upsert: true });
+    } catch (e) { console.warn('[Storage] brand asset:', e.message); }
+  }
+  return safe;
+}
+
+async function deleteBrandAsset(slug, filename) {
+  const safe = path.basename(filename);
+  const p    = path.join(brandAssetsDir(slug), safe);
+  try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch (_) {}
+  const db = getDB();
+  if (db) {
+    try { await db.storage.from('creatives').remove([`brand-assets/${slug}/${safe}`]); } catch (_) {}
+  }
+}
+
 async function clientExistsInSupabase(slug) {
   const db = getDB();
   if (!db) return false;
@@ -563,4 +610,5 @@ module.exports = {
   normalizeCreativeImageUrl,
   uploadImageToStorage, getImageFromStorage,
   getMetaName, FORMAT_SHORT,
+  brandAssetsDir, getBrandAssetPaths, listBrandAssets, saveBrandAsset, deleteBrandAsset,
 };

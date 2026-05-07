@@ -89,8 +89,22 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
   const logsEndRef = useRef(null);
   const { running, logs, progress, stepStatus, clientSlug, startTime } = pipeline;
 
-  const [formatFilter, setFormatFilter]     = useState('all');
+  const [formatFilter,    setFormatFilter]    = useState('all');
   const [selectedFormats, setSelectedFormats] = useState([]);
+  const [selectedRatios,  setSelectedRatios]  = useState(['4:5']);
+
+  const RATIO_OPTIONS = [
+    { id: '4:5',  label: '4:5',  name: 'Feed portrait',    desc: '1080×1350 · Most common feed format' },
+    { id: '1:1',  label: '1:1',  name: 'Feed square',      desc: '1080×1080 · Works on all placements' },
+    { id: '9:16', label: '9:16', name: 'Reels / Stories',  desc: '1080×1920 · Vertical full-screen' },
+  ];
+
+  const toggleRatio = (id) =>
+    setSelectedRatios(prev =>
+      prev.includes(id)
+        ? prev.length > 1 ? prev.filter(r => r !== id) : prev // keep at least 1
+        : [...prev, id]
+    );
 
   const slug = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
 
@@ -103,13 +117,17 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
 
   const start = (opts = {}) => {
     if (!activeClient) return addToast('Select a client first', 'error');
-    const steps  = opts.steps || STEPS.map(s => s.id);
-    const skip   = opts.skipImages || false;
+    const steps    = opts.steps || STEPS.map(s => s.id);
+    const skip     = opts.skipImages || false;
     const fmtParam = opts.formatFilter !== undefined
       ? opts.formatFilter
       : (formatFilter === 'custom' && selectedFormats.length > 0 ? selectedFormats.join(',') : 'all');
-    startPipeline(slug, `/api/pipeline/${slug}/run?steps=${steps.join(',')}&skipImages=${skip}&formatFilter=${fmtParam}`);
+    const ratioParam = selectedRatios.join(',');
+    startPipeline(slug, `/api/pipeline/${slug}/run?steps=${steps.join(',')}&skipImages=${skip}&formatFilter=${fmtParam}&ratios=${ratioParam}`);
   };
+
+  const fmtCount      = formatFilter === 'custom' && selectedFormats.length > 0 ? selectedFormats.length : 22;
+  const totalCreatives = fmtCount * 2 * selectedRatios.length; // formats × versions × ratios
 
   const elapsedSec = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
   const elapsed    = `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`;
@@ -164,7 +182,62 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
             ))}
           </div>
           <div style={{ marginTop: 10, fontSize: 11, color: 'var(--amber)', fontWeight: 500 }}>
-            Total: <strong>20–40 minutes</strong> for a full run (image generation is slow — Gemini takes 2–4 min per image and may retry). Navigate freely — all progress is saved automatically and survives refreshes.
+            Total: <strong>20–40 min per ratio selected</strong>. Multiple ratios multiply the time. Navigate freely — progress is saved automatically.
+          </div>
+        </div>
+      )}
+
+      {/* ── Aspect ratio selection ── */}
+      {!running && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <div className="card-title">Aspect Ratios</div>
+            <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
+              {selectedRatios.length} ratio{selectedRatios.length > 1 ? 's' : ''} × {fmtCount} formats × 2 versions = <strong>{totalCreatives} images</strong>
+            </span>
+          </div>
+          <div className="card-body">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
+              {RATIO_OPTIONS.map(r => {
+                const active = selectedRatios.includes(r.id);
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => toggleRatio(r.id)}
+                    style={{
+                      padding: '14px 12px', borderRadius: 'var(--radius)',
+                      border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border2)'}`,
+                      background: active ? 'var(--accent-dim)' : 'var(--surface2)',
+                      cursor: 'pointer', textAlign: 'center', transition: 'all 0.15s',
+                      position: 'relative'
+                    }}
+                  >
+                    {active && (
+                      <div style={{ position: 'absolute', top: 6, right: 8 }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                    )}
+                    {/* Visual ratio preview */}
+                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                      <div style={{
+                        background: active ? 'var(--accent)' : 'var(--border2)',
+                        borderRadius: 3, transition: 'background 0.15s',
+                        width:  r.id === '9:16' ? 18 : r.id === '1:1' ? 28 : 24,
+                        height: r.id === '9:16' ? 32 : r.id === '1:1' ? 28 : 30,
+                      }} />
+                    </div>
+                    <div style={{ fontFamily: 'var(--display)', fontSize: 16, fontWeight: 800, color: active ? 'var(--accent)' : 'var(--text)', marginBottom: 2 }}>{r.label}</div>
+                    <div style={{ fontWeight: 600, fontSize: 11, color: active ? 'var(--accent)' : 'var(--text)', marginBottom: 3 }}>{r.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 }}>{r.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+            {selectedRatios.length > 1 && (
+              <div style={{ fontSize: 11.5, color: 'var(--text2)', padding: '8px 12px', background: 'var(--amber-dim)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 'var(--radius)' }}>
+                <strong>Multiple ratios selected:</strong> {selectedRatios.length} images will be generated per format variant — {selectedRatios.map(r => `${r} (Version A + B)`).join(', ')}. Total: {totalCreatives} images. Pipeline will take approximately {Math.round(totalCreatives * 3)} minutes.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -175,7 +248,7 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
           <div className="card-header">
             <div className="card-title">Format Selection</div>
             <span style={{ fontSize: 11, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>
-              {formatFilter === 'all' ? '20 formats × 2 angles = 40 creatives' : selectedFormats.length > 0 ? `${selectedFormats.length} selected × 2 = ${selectedFormats.length * 2} creatives` : 'select formats below'}
+              {formatFilter === 'all' ? `${fmtCount} formats × 2 angles × ${selectedRatios.length} ratio${selectedRatios.length > 1 ? 's' : ''} = ${totalCreatives} creatives` : selectedFormats.length > 0 ? `${selectedFormats.length} × 2 × ${selectedRatios.length} = ${totalCreatives} creatives` : 'select formats below'}
             </span>
           </div>
           <div className="card-body">

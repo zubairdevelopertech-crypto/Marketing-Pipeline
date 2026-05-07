@@ -20,7 +20,7 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models
  * @param {string|string[]} referenceImagePaths - One or more reference image file paths
  * @param {object} options - { retries, onRetry }
  */
-async function generateImage(prompt, referenceImagePaths = [], { retries = 3, onRetry } = {}) {
+async function generateImage(prompt, referenceImagePaths = [], { retries = 3, onRetry, aspectRatio = '4:5' } = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
 
@@ -47,8 +47,7 @@ async function generateImage(prompt, referenceImagePaths = [], { retries = 3, on
     contents: [{ parts }],
     generationConfig: {
       responseModalities: ['TEXT', 'IMAGE'],
-      // 4:5 = portrait Meta ad format (1080x1350)
-      imageConfig: { aspectRatio: '4:5' }
+      imageConfig: { aspectRatio }   // caller-supplied: '4:5' | '1:1' | '9:16'
     }
   });
 

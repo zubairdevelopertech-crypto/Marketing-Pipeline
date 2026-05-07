@@ -6,7 +6,8 @@ const path    = require('path');
 const {
   saveClient, getAllClients, getClientMeta, getClientMetaAsync,
   getClientDocs, deleteDoc, clientDir, docsDir,
-  saveClientDocument, clientExistsInSupabase, getDB
+  saveClientDocument, clientExistsInSupabase, getDB,
+  brandAssetsDir, listBrandAssets, saveBrandAsset, deleteBrandAsset
 } = require('../utils/db');
 const { extractTextFromBuffer } = require('../utils/docReader');
 
@@ -122,6 +123,54 @@ router.post('/:client/upload', (req, res, next) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Brand assets (product photos, logos) ─────────────────────────────────────
+const brandAssetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 30 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (/\.(jpe?g|png|webp|gif)$/i.test(file.originalname)) cb(null, true);
+    else cb(new Error('Only image files allowed (.jpg .png .webp .gif)'));
+  }
+});
+
+router.get('/:client/brand-assets', async (req, res) => {
+  try {
+    const assets = await listBrandAssets(req.params.client);
+    res.json({ assets });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/:client/brand-assets', brandAssetUpload.array('assets', 10), async (req, res) => {
+  if (!req.files?.length) return res.status(400).json({ error: 'No images uploaded' });
+  try {
+    const saved = [];
+    for (const f of req.files) {
+      const name = await saveBrandAsset(req.params.client, f.originalname, f.buffer);
+      saved.push({ name, size: f.size });
+    }
+    res.json({ success: true, saved, count: saved.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Serve brand asset image
+router.get('/:client/brand-assets/:filename', (req, res) => {
+  const safe = path.basename(decodeURIComponent(req.params.filename));
+  if (!/^[\w\s._-]+\.(jpe?g|png|webp|gif)$/i.test(safe)) return res.status(400).end();
+  const p = path.join(brandAssetsDir(req.params.client), safe);
+  if (!fs.existsSync(p)) return res.status(404).end();
+  const ext = path.extname(safe).slice(1).toLowerCase();
+  res.setHeader('Content-Type', ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  fs.createReadStream(p).pipe(res);
+});
+
+router.delete('/:client/brand-assets/:filename', async (req, res) => {
+  try {
+    await deleteBrandAsset(req.params.client, decodeURIComponent(req.params.filename));
+    res.json({ success: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ── Delete a doc ──────────────────────────────────────────────────────────────

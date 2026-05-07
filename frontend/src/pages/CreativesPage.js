@@ -32,12 +32,17 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const getRatio = (c) => c.ratio || (c.label?.includes('-1x1') ? '1:1' : c.label?.includes('-9x16') ? '9:16' : '4:5');
+
   const filtered = creatives.filter(c => {
-    if (filter === 'top10') return c.is_top10;
-    if (filter === 'high') return c.ctr_tier === 'high';
-    if (filter === 'failed') return c.status === 'error';
+    if (filter === 'top10')   return c.is_top10;
+    if (filter === 'high')    return c.ctr_tier === 'high';
+    if (filter === 'failed')  return c.status === 'error';
     if (filter === 'version-a') return c.version === 'A';
     if (filter === 'version-b') return c.version === 'B';
+    if (filter === 'ratio-4x5')  return getRatio(c) === '4:5';
+    if (filter === 'ratio-1x1')  return getRatio(c) === '1:1';
+    if (filter === 'ratio-9x16') return getRatio(c) === '9:16';
     return true;
   });
 
@@ -211,11 +216,15 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
       {/* Filters */}
       <div className="g-filters">
         {[
-          { id: 'all', label: `All (${creatives.length})` },
-          { id: 'top10', label: `Top Rated (${top10.length})` },
-          { id: 'high', label: 'High CTR' },
+          { id: 'all',       label: `All (${creatives.length})` },
+          { id: 'top10',     label: `Top Rated (${top10.length})` },
+          { id: 'high',      label: 'High CTR' },
           { id: 'version-a', label: 'Version A' },
           { id: 'version-b', label: 'Version B' },
+          // Ratio filters — only show if multiple ratios present
+          ...(creatives.some(c => getRatio(c) === '4:5')  ? [{ id: 'ratio-4x5',  label: '4:5 Feed'    }] : []),
+          ...(creatives.some(c => getRatio(c) === '1:1')  ? [{ id: 'ratio-1x1',  label: '1:1 Square'  }] : []),
+          ...(creatives.some(c => getRatio(c) === '9:16') ? [{ id: 'ratio-9x16', label: '9:16 Reels'  }] : []),
           ...(failedCount > 0 ? [{ id: 'failed', label: `Failed (${failedCount})` }] : [])
         ].map(f => (
           <button key={f.id} className={`g-filter-btn ${filter === f.id ? 'active' : ''}`} onClick={() => setFilter(f.id)}>
@@ -254,7 +263,13 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
                 </div>
               )}
               {c.is_top10 && <div className="g-badge g-badge-top">Top</div>}
-              {c.score && <div className="g-badge g-badge-score">{c.score}</div>}
+              {c.score    && <div className="g-badge g-badge-score">{c.score}</div>}
+              {/* Ratio badge — only show when multiple ratios exist in gallery */}
+              {creatives.some(x => getRatio(x) !== '4:5') && (
+                <div style={{ position: 'absolute', bottom: 8, right: 8, fontFamily: 'var(--mono)', fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', backdropFilter: 'blur(4px)' }}>
+                  {getRatio(c)}
+                </div>
+              )}
               {/* Delete button — top-left on hover */}
               <button
                 className="g-card-delete"
