@@ -34,15 +34,19 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
 
   const getRatio = (c) => c.ratio || (c.label?.includes('-1x1') ? '1:1' : c.label?.includes('-9x16') ? '9:16' : '4:5');
 
+  const iterationCount = creatives.filter(c => c.is_iteration).length;
+
   const filtered = creatives.filter(c => {
-    if (filter === 'top10')   return c.is_top10;
-    if (filter === 'high')    return c.ctr_tier === 'high';
-    if (filter === 'failed')  return c.status === 'error';
-    if (filter === 'version-a') return c.version === 'A';
-    if (filter === 'version-b') return c.version === 'B';
+    if (filter === 'top10')      return c.is_top10;
+    if (filter === 'high')       return c.ctr_tier === 'high';
+    if (filter === 'failed')     return c.status === 'error';
+    if (filter === 'version-a')  return c.version === 'A';
+    if (filter === 'version-b')  return c.version === 'B';
     if (filter === 'ratio-4x5')  return getRatio(c) === '4:5';
     if (filter === 'ratio-1x1')  return getRatio(c) === '1:1';
     if (filter === 'ratio-9x16') return getRatio(c) === '9:16';
+    if (filter === 'iterations') return c.is_iteration === true;
+    if (filter === 'pipeline')   return !c.is_iteration;
     return true;
   });
 
@@ -225,6 +229,9 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
           ...(creatives.some(c => getRatio(c) === '4:5')  ? [{ id: 'ratio-4x5',  label: '4:5 Feed'    }] : []),
           ...(creatives.some(c => getRatio(c) === '1:1')  ? [{ id: 'ratio-1x1',  label: '1:1 Square'  }] : []),
           ...(creatives.some(c => getRatio(c) === '9:16') ? [{ id: 'ratio-9x16', label: '9:16 Reels'  }] : []),
+          // Source filters
+          ...(iterationCount > 0 ? [{ id: 'iterations', label: `Iterations (${iterationCount})` }] : []),
+          ...(iterationCount > 0 ? [{ id: 'pipeline',   label: 'Pipeline Only' }] : []),
           ...(failedCount > 0 ? [{ id: 'failed', label: `Failed (${failedCount})` }] : [])
         ].map(f => (
           <button key={f.id} className={`g-filter-btn ${filter === f.id ? 'active' : ''}`} onClick={() => setFilter(f.id)}>
@@ -262,8 +269,13 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
                   )}
                 </div>
               )}
-              {c.is_top10 && <div className="g-badge g-badge-top">Top</div>}
-              {c.score    && <div className="g-badge g-badge-score">{c.score}</div>}
+              {c.is_top10      && <div className="g-badge g-badge-top">Top</div>}
+              {c.score         && <div className="g-badge g-badge-score">{c.score}</div>}
+              {c.is_iteration  && (
+                <div style={{ position: 'absolute', top: 8, left: 8, fontFamily: 'var(--mono)', fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: 'rgba(217,119,6,0.85)', color: '#fff', backdropFilter: 'blur(4px)' }}>
+                  V{c.iteration_num}
+                </div>
+              )}
               {/* Ratio badge — only show when multiple ratios exist in gallery */}
               {creatives.some(x => getRatio(x) !== '4:5') && (
                 <div style={{ position: 'absolute', bottom: 8, right: 8, fontFamily: 'var(--mono)', fontSize: 8, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', backdropFilter: 'blur(4px)' }}>

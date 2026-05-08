@@ -101,8 +101,54 @@ router.get('/:client', async (req, res) => {
     });
   }
 
-  manifest.sort((a, b) => (b.score || 0) - (a.score || 0));
-  res.json({ creatives: manifest, top10, total: manifest.length });
+  // ── Also load feedback iteration creatives from analysis files ──────────────
+  const feedbackCreatives = [];
+  if (fs.existsSync(outputDir)) {
+    const analysisFiles = fs.readdirSync(outputDir)
+      .filter(f => f.startsWith('feedback_analysis_v') && f.endsWith('.json'));
+
+    for (const fname of analysisFiles) {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(outputDir, fname)));
+        const iterNum = data.iteration_num || parseInt(fname.match(/v(\d+)/)?.[1] || '0');
+        for (const it of (data.iterations || [])) {
+          if (it.status === 'success' && it.image_url) {
+            const match = (it.label || '').match(/^(FORMAT-\d+)-VERSION-([AB])/);
+            feedbackCreatives.push({
+              label:        it.label || `ITER-${iterNum}`,
+              format_id:    it.format_id || (match ? match[1] : ''),
+              version:      it.version   || (match ? match[2] : 'A'),
+              ratio:        it.ratio     || '4:5',
+              status:       'success',
+              image_url:    it.image_url,
+              headline:     it.headline     || '',
+              subheadline:  it.subheadline  || '',
+              body_copy:    it.body_copy    || '',
+              cta_text:     it.cta_text     || '',
+              change_made:  it.change_made  || '',
+              source_ad:    it.source_ad    || '',
+              winning_angle:it.winning_angle|| '',
+              is_iteration: true,
+              iteration_num:iterNum,
+              is_top10:     false,
+              score:        null,
+              brief:        { format_name: it.format_id ? it.format_id.replace('FORMAT-', 'F') : 'Iteration' }
+            });
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Combine: main pipeline creatives + feedback iterations
+  const combined = [...manifest, ...feedbackCreatives];
+  combined.sort((a, b) => {
+    // Top-rated pipeline creatives first, then by score, then iterations
+    if (a.is_iteration !== b.is_iteration) return a.is_iteration ? 1 : -1;
+    return (b.score || 0) - (a.score || 0);
+  });
+
+  res.json({ creatives: combined, top10, total: combined.length });
 });
 
 // Get iteration creatives

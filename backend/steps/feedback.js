@@ -109,11 +109,28 @@ function num(v) {
   return parseFloat(String(v).replace(',', '.')) || 0;
 }
 
-// FORMAT mode = any ad_name matches FORMAT-XX-VERSION-X OR {brand}-{FormatName}-{Version}
-const META_NAME_RE = /^[\w-]+-(?:PAS|BAB|Proof|Offer|List|Hook|Compare|Result|Empathy|Bold|StickyNote|Notes|iMessage|ChatGPT|UsVsThem|Benefits|UGC|Cartoon|Lifestyle|Carousel|Review|NegPos)-[AB]$/i;
+// Ratio suffix pattern: -9x16, -1x1, -4x5
+const RATIO_SUFFIX_RE = /(-(\d+x\d+))$/i;
+
+// Extract ratio from a label (returns '9:16', '1:1', or '4:5')
+function extractRatio(label) {
+  const m = label.match(RATIO_SUFFIX_RE);
+  if (!m) return '4:5';
+  const r = m[2].toLowerCase();
+  if (r === '9x16') return '9:16';
+  if (r === '1x1')  return '1:1';
+  if (r === '4x5')  return '4:5';
+  return '4:5';
+}
+
+// Strip ratio suffix from a label to get the base label
+function stripRatioSuffix(label) { return label.replace(RATIO_SUFFIX_RE, ''); }
+
+// FORMAT mode: ad names look like FORMAT-XX-VERSION-X[-ratio] or {brand}-{Format}-{V}[-ratio]
+const META_NAME_RE = /^[\w-]+-(?:PAS|BAB|Proof|Offer|List|Hook|Compare|Result|Empathy|Bold|StickyNote|Notes|iMessage|ChatGPT|UsVsThem|Benefits|UGC|Cartoon|Lifestyle|Carousel|Review|NegPos)-[AB](-\d+x\d+)?$/i;
 function isFormatMode(rows) {
   return rows.some(r =>
-    /^FORMAT-\d+-VERSION-[AB]/i.test(r.ad_name || '') ||
+    /^FORMAT-\d+-VERSION-[AB](-\d+x\d+)?$/i.test(r.ad_name || '') ||
     META_NAME_RE.test(r.ad_name || '')
   );
 }
@@ -144,12 +161,27 @@ async function runFeedback(clientDir, csvPath, iterationNum, onProgress) {
 
   const briefsLookup   = {};
   const manifestLookup = {};
-  briefs.forEach(b => { briefsLookup[`${b.format_id}-VERSION-${b.version}`] = b; });
+
+  briefs.forEach(b => {
+    const key = `${b.format_id}-VERSION-${b.version}`;
+    briefsLookup[key] = b;
+  });
+
   manifest.forEach(m => {
     manifestLookup[m.label] = m;
-    // Also index by meta_name so "ray-ban-PAS-A" matches FORMAT-01-VERSION-A
+
+    // Index by meta_name (e.g. "bespokecall-Result-B")
     const mname = m.meta_name || getMetaName(clientSlug, m.format_id, m.version);
-    if (mname) manifestLookup[mname] = m;
+    if (mname) {
+      manifestLookup[mname] = m;
+      // Also without ratio suffix so "bespokecall-Result-B" matches "bespokecall-Result-B-9x16"
+      const baseMname = stripRatioSuffix(mname);
+      if (baseMname !== mname) manifestLookup[baseMname] = m;
+    }
+
+    // Index by base label without ratio suffix so "FORMAT-08-VERSION-B" finds "FORMAT-08-VERSION-B-9x16"
+    const baseLabel = stripRatioSuffix(m.label);
+    if (baseLabel !== m.label && !manifestLookup[baseLabel]) manifestLookup[baseLabel] = m;
   });
 
   // ── Detect mode ─────────────────────────────────────────────────────────────
@@ -163,11 +195,14 @@ async function runFeedback(clientDir, csvPath, iterationNum, onProgress) {
 
   // ── Enrich rows with any available creative context ──────────────────────────
   const enrichedRows = metaRows.map(row => {
-    const name = row.ad_name || '';
-    const cr   = manifestLookup[name] || {};
-    const br   = briefsLookup[name]   || {};
+    const name      = row.ad_name || '';
+    const ratio     = extractRatio(name);           // detect ratio from label
+    const baseName  = stripRatioSuffix(name);       // label without -9x16 etc
+    const cr        = manifestLookup[name] || manifestLookup[baseName] || {};
+    const br        = briefsLookup[name]   || briefsLookup[baseName]   || {};
     return {
       ad_name:            name,
+      detected_ratio:     ratio,      // '4:5' | '1:1' | '9:16' — for iteration generation
       impressions:        num(row.impressions),
       reach:              num(row.reach),
       spend_eur:          num(row.spend),
@@ -183,13 +218,14 @@ async function runFeedback(clientDir, csvPath, iterationNum, onProgress) {
       conversion_score:   row.conversion_score  || '',
       ad_set_name:        row.ad_set_name || '',
       // Creative context (only available in FORMAT mode)
-      original_headline:  cr.prompt?.headline   || br.headline   || '',
-      original_hook:      br.hook_line           || '',
-      original_body:      cr.prompt?.body_copy   || br.body_copy  || '',
-      original_cta:       cr.prompt?.cta_text    || br.cta_text   || '',
+      original_headline:  cr.prompt?.headline   || cr.headline  || br.headline   || '',
+      original_hook:      cr.brief?.hook_line   || br.hook_line || '',
+      original_body:      cr.prompt?.body_copy  || cr.body_copy || br.body_copy  || '',
+      original_cta:       cr.prompt?.cta_text   || cr.cta_text  || br.cta_text   || '',
       original_visual:    cr.prompt?.visual_direction || '',
       winning_argument:   br.winning_argument    || '',
-      format_name:        br.format_name         || '',
+      format_name:        br.format_name || cr.brief?.format_name || '',
+      format_id:          cr.format_id   || br.format_id   || '',
     };
   });
 
@@ -338,11 +374,24 @@ Return JSON:
   // ── Generate improved / new creatives ────────────────────────────────────────
   const iterations = [];
 
+  // Ratio → safe zone spec (same as creative.js RATIO_SPECS)
+  const RATIO_SPECS_FB = {
+    '4:5':  { dim: '1080×1350px', name: 'Feed portrait', safe: 'horizontal 8-92%, vertical 12-82%. CTA at 65-80% from top. Bottom 18% and top 12% are DANGER ZONES.' },
+    '1:1':  { dim: '1080×1080px', name: 'Feed square',   safe: 'horizontal 8-92%, vertical 10-90%. CTA at 60-78% from top. Equal margins all sides.' },
+    '9:16': { dim: '1080×1920px', name: 'Reels/Stories', safe: 'VERY RESTRICTIVE — horizontal 6-94%, vertical 14-65% ONLY. Bottom 35% is a DANGER ZONE (Instagram shows UI here). ALL text/CTAs must be in the middle 51% of height.' },
+  };
+
   for (const plan of priorities) {
     // Enforce iteration suffix so labels never overwrite main pipeline images
     const baseLabel = (plan.label || 'FORMAT-01-VERSION-A').replace(/-V\d+$/, '');
     const newLabel  = `${baseLabel}-V${iterationNum}`;
-    onProgress({ step: 'feedback', status: 'running', message: `[${iterations.length + 1}/${priorities.length}] Building ${newLabel}…` });
+
+    // Detect the ratio of this iteration — use source_ad's ratio if available
+    const sourceEntry = enrichedRows.find(r => r.ad_name === plan.source_ad) || {};
+    const ratio       = plan.ratio || sourceEntry.detected_ratio || '4:5';
+    const ratioSpec   = RATIO_SPECS_FB[ratio] || RATIO_SPECS_FB['4:5'];
+
+    onProgress({ step: 'feedback', status: 'running', message: `[${iterations.length + 1}/${priorities.length}] Building ${newLabel} (${ratio})…` });
 
     try {
       const isNL = (context.target_audience?.location || '').toLowerCase().includes('nether') ||
@@ -384,7 +433,7 @@ Return ONLY valid JSON:
   "hook_line": "${plan.brief?.hook_line || ''}",
   "winning_argument": "${plan.brief?.winning_argument || ''}",
   "change_made": "What changed vs the original and the psychological reason",
-  "nano_banana_prompt": "Write a 300-400 word image generation prompt for Gemini. Pure cinematic visual description — no position labels, no pixel values, no zone numbers.\\n\\n📐 META SAFE ZONE (mandatory for ad performance): 4:5 feed ad (1080×1350px). All text must sit in the safe center zone — horizontally 8-92% of width, vertically 12-82% of height. CTA button at 65-80% from top. Brand logo in upper portion with clear margin from top edge. Bottom 18% = background only (danger zone). Top 12% = atmospheric background only (danger zone). Ads with text in danger zones get penalized with higher CPM.\\n\\nInclude: the scene composition matching the ${plan.format_name} format, the mood and lighting, the person or product in the frame, the text that must appear word-for-word in ${lang} (headline, subheadline, CTA button within the safe zone), brand color ${context.brand_primary_color || '#2563EB'}. Portrait 4:5 ratio. Mobile-first. High contrast. Looks like a real Meta static ad. No AI artifacts."
+  "nano_banana_prompt": "Write a 300-400 word image generation prompt for Gemini. Pure cinematic visual description — no position labels, no pixel values, no zone numbers.\\n\\n📐 META SAFE ZONE for ${ratioSpec.name} (${ratioSpec.dim}): ${ratioSpec.safe}\\n\\nInclude: the scene composition matching the ${plan.format_name} format, the mood and lighting, the person or product in the frame, the text that must appear word-for-word in ${lang} within the safe zone (headline, subheadline, CTA button), brand color ${context.brand_primary_color || '#2563EB'}. ${ratio} ratio. Mobile-first. High contrast. Looks like a real Meta static ad. No AI artifacts."
 }`;
 
       const iterData = await callClaudeJSON(iterPrompt, { maxTokens: 2500 });
@@ -393,6 +442,7 @@ Return ONLY valid JSON:
 
       const imageBytes = await generateImage(iterData.nano_banana_prompt, [], {
         retries: 5,
+        aspectRatio: ratio,
         onRetry: (att, total, code, delaySec) => {
           onProgress({
             step: 'feedback', status: 'running',
@@ -410,6 +460,9 @@ Return ONLY valid JSON:
       iterData.status        = 'success';
       iterData.source_ad     = plan.source_ad || '';
       iterData.winning_angle = plan.winning_angle || '';
+      iterData.ratio         = ratio;
+      iterData.format_id     = plan.format_id || '';
+      iterData.iteration_num = iterationNum;
       iterations.push(iterData);
 
       // Fire per-image event so frontend shows the image immediately
