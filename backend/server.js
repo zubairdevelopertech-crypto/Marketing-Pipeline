@@ -23,6 +23,9 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded images statically
 app.use('/outputs', express.static(path.join(__dirname, 'clients')));
 
+// Serve winning static reference images for format library
+app.use('/api/format-refs', express.static(path.join(__dirname, '..', '00 — Winning Static References')));
+
 // File upload config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
