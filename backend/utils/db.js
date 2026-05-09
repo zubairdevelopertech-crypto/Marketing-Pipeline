@@ -490,32 +490,73 @@ async function getManifestForApi(slug) {
 
   const db = getDB();
   if (!db) return [];
-  const { data, error } = await db.from('creatives').select('*').eq('client_slug', slug).order('label');
-  if (error || !data?.length) return [];
 
-  return data.map(row => ({
-    label: row.label,
-    format_id: row.format_id,
-    version: row.version,
-    brief: row.brief_json || {
-      format_id: row.format_id,
-      format_name: row.format_id,
-      version: row.version,
-      headline: row.headline,
-      hook_line: row.hook_line,
-      body_copy: row.body_copy,
-      cta_text: row.cta_text
-    },
-    status: row.status,
-    image_url: row.status === 'success' ? `/api/creatives/${slug}/images/${row.label}.jpg` : (row.image_url || null),
-    score: row.score,
-    ctr_tier: row.ctr_tier,
-    error: row.error,
-    headline: row.headline,
-    subheadline: row.brief_json?.subheadline,
-    body_copy: row.body_copy,
-    cta_text: row.cta_text
-  }));
+  const { data, error } = await db.from('creatives').select('*').eq('client_slug', slug).order('label');
+  const dbLabels = new Set();
+  const rows = [];
+
+  for (const row of (error ? [] : (data || []))) {
+    dbLabels.add(row.label);
+    rows.push({
+      label:      row.label,
+      format_id:  row.format_id,
+      version:    row.version,
+      brief: row.brief_json || {
+        format_id:   row.format_id,
+        format_name: row.format_id,
+        version:     row.version,
+        headline:    row.headline,
+        hook_line:   row.hook_line,
+        body_copy:   row.body_copy,
+        cta_text:    row.cta_text
+      },
+      status:     row.status,
+      image_url:  row.status === 'success' ? `/api/creatives/${slug}/images/${row.label}.jpg` : (row.image_url || null),
+      score:      row.score,
+      ctr_tier:   row.ctr_tier,
+      error:      row.error,
+      headline:   row.headline,
+      subheadline: row.brief_json?.subheadline,
+      body_copy:  row.body_copy,
+      cta_text:   row.cta_text
+    });
+  }
+
+  // Reconcile with Supabase Storage — pick up images that were uploaded to Storage
+  // but whose DB row was never written (e.g. due to a failed upsert mid-pipeline).
+  try {
+    const { data: storageFiles } = await db.storage.from(STORAGE_BUCKET).list(slug, { limit: 500 });
+    for (const f of (storageFiles || [])) {
+      if (!f.name || !/\.(jpe?g|png)$/i.test(f.name)) continue;
+      const label = f.name.replace(/\.(jpe?g|png)$/i, '');
+      if (dbLabels.has(label)) continue;
+      const match = label.match(/^(FORMAT-\d+)-VERSION-([AB])/i);
+      if (!match) continue;
+      const format_id = match[1].toUpperCase();
+      const version   = match[2].toUpperCase();
+      rows.push({
+        label,
+        format_id,
+        version,
+        status:   'success',
+        image_url: `/api/creatives/${slug}/images/${label}.jpg`,
+        score:    null,
+        ctr_tier: null,
+        brief: { format_id, format_name: format_id, version }
+      });
+      // Heal the gap so future calls don't need reconciliation
+      db.from('creatives').upsert({
+        client_slug: slug, label, format_id, version,
+        status: 'success', updated_at: new Date().toISOString()
+      }, { onConflict: 'client_slug,label' }).then(({ error: e }) => {
+        if (e) console.warn('[Storage reconcile] upsert:', e.message);
+      });
+    }
+  } catch (e) {
+    console.warn('[Storage reconcile]:', e.message);
+  }
+
+  return rows;
 }
 
 // ── CREATIVE MANIFEST — DB-first read ────────────────────────────────────────
