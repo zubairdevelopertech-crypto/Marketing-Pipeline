@@ -366,25 +366,34 @@ export function FormatsPage() {
 
   return (
     <div>
-      <div className="page-header">
+      <div className="page-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div>
           <div className="page-title">Ad Formats Library</div>
           <div className="page-sub">
-            {allFormats.length} formats — click any card to see winning examples
+            {allFormats.length} proven formats · click any card to see winning examples
             {customFormats.length > 0 && ` · ${customFormats.length} custom`}
           </div>
         </div>
         <button
           className="btn btn-primary btn-sm"
+          style={{ flexShrink: 0, marginTop: 4 }}
           onClick={() => setShowAddModal(true)}
         >
           + Add Format
         </button>
       </div>
 
-      <div className="callout callout-accent" style={{ marginBottom: 20 }}>
-        <strong>Based on the Mark Builds Brands framework.</strong> Each format is matched to a Schwartz awareness level (L1–L5).
-        Click any format to see winning ad examples — so you know exactly what each format looks like.
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20,
+        padding: '11px 16px', borderRadius: 10,
+        background: 'var(--accent-dim)', border: '1px solid var(--accent-border)',
+        fontSize: 12.5
+      }}>
+        <span style={{ color: 'var(--accent)', fontSize: 16 }}>◆</span>
+        <span style={{ color: 'var(--text)' }}>
+          <strong>Mark Builds Brands framework</strong> — matched to Schwartz awareness levels L1–L5.
+          Click any format to see real winning ad examples.
+        </span>
       </div>
 
       <div className="format-grid">
