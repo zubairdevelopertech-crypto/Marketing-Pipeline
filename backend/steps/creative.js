@@ -343,23 +343,24 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
 }
 
 // Version A/B scene differentiation — same FORMAT, completely different visual execution
-// This ensures the two versions don't look like the same image with different text
 const VERSION_SCENE_VARIANTS = {
   A: {
-    mood: 'professional, corporate, data-driven, precise',
-    setting: 'professional office or corporate environment, clean and structured',
-    person: 'professionally dressed, formal attire, sharp and confident',
+    mood: 'professional, data-driven, precise, authoritative',
+    setting: 'clean modern office, minimal desk setup, or corporate environment with real depth',
+    person: 'professionally dressed person, early 30s, natural confidence — NOT model-perfect, real human features with natural skin texture',
     palette: 'cool professional tones, brand primary color dominant, structured layout',
-    typography: 'bold clean sans-serif, geometric, authoritative weight',
-    unique: 'Version A leans rational: specific numbers, credentials, structured visual hierarchy'
+    typography: 'geometric sans-serif (Inter or Helvetica Neue style), weight 700, tight tracking',
+    lighting: 'soft studio strobe with large diffuser, slight shadow on one side for dimension — NOT flat even illumination',
+    unique: 'Version A leans rational: specific numbers, credentials, precise visual hierarchy. Shot feel: Sony A7R IV, 35mm f/2.8, controlled studio light.'
   },
   B: {
-    mood: 'personal, emotional, aspirational, freedom-focused',
-    setting: 'more intimate or outdoor/aspirational setting — home office, rooftop, Amsterdam canal, cafe',
-    person: 'casually dressed, relaxed, authentic — less formal, more human',
-    palette: 'warmer tones, softer contrasts, more lifestyle-feeling',
-    typography: 'slightly more expressive or personal font style, could include handwritten accent',
-    unique: 'Version B leans emotional: identity shift, personal story, aspirational feeling — same format but soul is different'
+    mood: 'personal, emotional, aspirational, authentic, human',
+    setting: 'outdoor golden hour, canal-side in a European city, warm cafe interior, or home office with natural window light',
+    person: 'casually dressed, relaxed posture, candid authentic expression — genuine emotion, slight imperfection, NOT posed',
+    palette: 'warm amber and soft tones, lifestyle-feeling, brand color as accent only',
+    typography: 'humanist sans-serif (DM Sans or Plus Jakarta Sans style), slightly more breathing room, can include one handwritten accent word',
+    lighting: 'outdoor golden hour ambient OR warm window light from the side — cinematic, directional, with natural bokeh background',
+    unique: 'Version B leans emotional: identity shift, personal story, aspirational freedom. Shot feel: Fujifilm X-T5, 50mm f/1.4, natural ambient light with film character.'
   }
 };
 
@@ -448,10 +449,10 @@ Return ONLY valid JSON:
   "brand_primary_color": "${context.brand_primary_color || '#2563EB'}",
   "brand_secondary_color": "${context.brand_secondary_color || '#FFFFFF'}",
   "logo_placement": "top-right",
-  "nano_banana_prompt": "Write a 320-400 word image generation prompt for Gemini. Write it like a film director briefing a cinematographer — pure visual descriptions only.\\n\\n⚠️ ABSOLUTE RULE: NEVER include position labels, pixel values, zone numbers, or bracketed technical annotations in the prompt — Gemini paints them literally as text. Write ONLY cinematic visual descriptions.\\n\\n📐 META SAFE ZONE for ${ratioSpec.name} (${ratioSpec.dimensions}): ${ratioSpec.safeZone}\\n\\n${brandAssets.length > 0
-    ? `🖼️ CLIENT BRAND ASSETS: The last ${brandAssets.length} reference image(s) passed to Gemini are the client's OWN product photos / brand imagery. USE THEM DIRECTLY in the ad — feature the actual product, show the real brand imagery, or incorporate the visual style. The first ${Math.max(0, 2 - brandAssets.length)} reference image(s) are format layout examples (for structure only).`
+  "nano_banana_prompt": "MISSION: Produce a real, professional Meta ad that could run tomorrow — created by a top-tier agency like Wieden+Kennedy or Droga5. Every element must feel intentional and human-made, NOT AI-generated.\\n\\n⚠️ ABSOLUTE RULE: NEVER include position labels, pixel values, zone numbers, or bracketed technical annotations — Gemini paints them literally as text on the image. Write ONLY cinematic visual descriptions.\\n\\n📐 META SAFE ZONE for ${ratioSpec.name} (${ratioSpec.dimensions}): ${ratioSpec.safeZone}\\n\\n${brandAssets.length > 0
+    ? `🖼️ CLIENT BRAND ASSETS: The last ${brandAssets.length} reference image(s) passed to Gemini are the client's OWN product photos / brand imagery. USE THEM DIRECTLY — feature the actual product, show the real brand imagery. The first reference image(s) are format layout examples (structure only).`
     : 'REFERENCE IMAGES: Format layout examples are attached — study structure only, create new content.'
-  }\\n\\nCOMPOSITION TO ACHIEVE (${brief.format_name} format): ${rules.composition}\\n\\nVISUAL IDENTITY Version ${brief.version}: ${versionScene.mood} mood. ${versionScene.setting}. ${versionScene.person}. Color palette: ${versionScene.palette}.\\n\\nTEXT on the image (write exactly in ${lang}, readable and bold — within the safe zone above):\\n• Headline: \\"${brief.headline}\\"\\n• Subheadline: \\"${brief.subheadline}\\"\\n• CTA button in ${context.brand_primary_color || '#2563EB'}: \\"${brief.cta_text}\\"\\n\\nBRAND: '${context.client_name}' logo in the upper area with clear margin. Primary: ${context.brand_primary_color || '#2563EB'}.\\n\\nQUALITY: ${ratio} ratio. Mobile-first. High contrast text. No AI artifacts. Real Meta ad look.\\n\\nDO NOT INCLUDE: ${rules.mustExclude.join(', ')}."
+  }\\n\\nCOMPOSITION (${brief.format_name}): ${rules.composition}\\n\\nVERSION ${brief.version} IDENTITY: ${versionScene.mood} mood. ${versionScene.setting}. ${versionScene.person}. Palette: ${versionScene.palette}. Lighting: ${versionScene.lighting || 'natural, directional, with clear shadow and highlight separation'}.\\n\\n🎨 REALISM MANDATE — This must NOT look AI-generated:\\n• People: natural skin texture with visible pores, genuine candid expression, slight natural imperfections — NOT plastic skin, NOT model-perfect, NOT uncanny valley face. Real human proportions.\\n• Photography: directional lighting creating depth and shadow — NOT flat even illumination that screams AI. Real bokeh behind subjects.\\n• Environment: authentic setting with real texture and depth — NOT AI-smoothed uniform backgrounds.\\n• Design elements (cards, buttons, tables): pixel-perfect sharp edges, precisely aligned — Figma/Photoshop quality, NOT blurry or floaty.\\n• Text: every word must be perfectly legible, real font — NOT garbled/blurry AI-generated letterforms.\\n• Composition: slightly asymmetric and dynamic — NOT perfectly centered, NOT robotically symmetric.\\n\\n❌ BANNED: plastic-looking faces, uncanny valley expressions, floating disconnected UI elements, perfectly symmetric compositions, blurry unreadable text, flat even AI-style lighting, generic stock photo feel, default AI gradient backgrounds.\\n\\nTEXT on the image (${lang}, bold and legible, inside safe zone):\\n• Headline: \\"${brief.headline}\\"\\n• Subheadline: \\"${brief.subheadline}\\"\\n• CTA button in ${context.brand_primary_color || '#2563EB'}: \\"${brief.cta_text}\\"\\n\\nBRAND: '${context.client_name}' logo placed with clear margin. Primary color: ${context.brand_primary_color || '#2563EB'}.\\n\\nFINAL QUALITY CHECK: A real art director should look at this and say 'a human made this' — intentional, raw where appropriate, polished where needed, emotionally resonant.\\n\\nDO NOT INCLUDE: ${rules.mustExclude.join(', ')}."
 }`;
 
   return await callClaudeJSON(prompt, { maxTokens: 2500 });

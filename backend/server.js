@@ -55,6 +55,7 @@ app.use('/api/clients', require('./routes/clients'));
 app.use('/api/pipeline', require('./routes/pipeline'));
 app.use('/api/feedback', require('./routes/feedback'));
 app.use('/api/creatives', require('./routes/creatives'));
+app.use('/api/formats', require('./routes/formats'));
 
 // Health check
 app.get('/api/health', (req, res) => {
