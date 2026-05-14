@@ -222,6 +222,80 @@ router.get('/:client/retry-images', async (req, res) => {
   }
 });
 
+// AI format recommendation — reads cached research, returns ranked format suggestions
+// Cached for 24 h so repeated page visits are instant.
+router.get('/:client/format-recommendations', async (req, res) => {
+  const slug      = req.params.client;
+  const clientDir = path.join(CLIENTS_DIR, slug);
+  const cacheFile = path.join(clientDir, 'output', 'format_recommendations.json');
+
+  // Serve cache if fresh (< 24 h)
+  if (fs.existsSync(cacheFile)) {
+    try {
+      const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+      const ageMs  = Date.now() - new Date(cached.generated_at).getTime();
+      if (ageMs < 24 * 60 * 60 * 1000) return res.json(cached);
+    } catch (_) {}
+  }
+
+  const context = await getContextAsync(slug);
+  if (!context) return res.status(404).json({ error: 'No research found. Run Research first.' });
+
+  const allFormats = JSON.parse(fs.readFileSync(FORMATS_PATH));
+  const formatsList = allFormats.map(f =>
+    `${f.id}: ${f.name} — ${f.structure} [awareness: ${f.awareness_fit.join(',')}]`
+  ).join('\n');
+
+  const ctxLines = [
+    `Product: ${context.product_name || ''}`,
+    `Client: ${context.client_name || ''}`,
+    `Awareness Level: ${context.awareness_level || ''}`,
+    `Core USP: ${context.core_usp || ''}`,
+    `Primary Pain Points: ${(context.primary_pain_points || []).slice(0, 4).join('; ')}`,
+    `Key Desires: ${(context.key_desires || []).slice(0, 4).join('; ')}`,
+    `Tone: ${context.tone_of_voice || ''}`,
+    `Category: ${context.product_category || ''}`,
+    `Target Audience: ${context.target_audience?.demographics || context.target_audience?.description || ''}`,
+  ].filter(l => !l.endsWith(': ') && !l.includes('undefined')).join('\n');
+
+  const prompt = `You are a senior Meta advertising strategist. Based on this client's research, recommend the best 5-7 ad formats to run first.
+
+CLIENT RESEARCH:
+${ctxLines}
+
+AVAILABLE FORMATS:
+${formatsList}
+
+Select formats that match the awareness level, amplify the strongest pain points/desires, and suit the product category.
+Avoid recommending every format — be selective and explain the WHY for each choice in 1-2 specific sentences.
+
+Return ONLY valid JSON:
+{
+  "recommendations": [
+    {
+      "format_id": "FORMAT-01",
+      "format_name": "PAS",
+      "rank": 1,
+      "rationale": "Why this specific format fits THIS client's situation in 1-2 sentences",
+      "match_tag": "3-4 word label e.g. 'Strong pain match' or 'High proof available'"
+    }
+  ],
+  "strategy_note": "One sentence on the overall creative approach for this client"
+}`;
+
+  try {
+    const { callClaudeJSON } = require('../utils/claude');
+    const data   = await callClaudeJSON(prompt, { maxTokens: 1400 });
+    const result = { ...data, client: slug, generated_at: new Date().toISOString() };
+
+    fs.mkdirSync(path.join(clientDir, 'output'), { recursive: true });
+    fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Get pipeline status for a client
 router.get('/:client/status', (req, res) => {
   const clientDir = path.join(CLIENTS_DIR, req.params.client);

@@ -92,6 +92,8 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
   const [formatFilter,    setFormatFilter]    = useState('all');
   const [selectedFormats, setSelectedFormats] = useState([]);
   const [selectedRatios,  setSelectedRatios]  = useState(['4:5']);
+  const [recommendations, setRecommendations] = useState(null);
+  const [loadingRecs,     setLoadingRecs]     = useState(false);
 
   const RATIO_OPTIONS = [
     { id: '4:5',  label: '4:5',  name: 'Feed portrait',    desc: '1080×1350 · Most common feed format' },
@@ -107,6 +109,25 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
     );
 
   const slug = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
+  const researchDone = ['research_done', 'creatives_done', 'review_done'].includes(activeClient?.status);
+
+  // Auto-fetch format recommendations when research is complete — runs in background, no blocking
+  useEffect(() => {
+    if (!slug || !researchDone || recommendations || loadingRecs) return;
+    setLoadingRecs(true);
+    fetch(`/api/pipeline/${slug}/format-recommendations`)
+      .then(r => r.json())
+      .then(data => { if (data.recommendations) setRecommendations(data); })
+      .catch(() => {})
+      .finally(() => setLoadingRecs(false));
+  }, [slug, researchDone]); // eslint-disable-line
+
+  const applyRecommended = () => {
+    if (!recommendations?.recommendations?.length) return;
+    const ids = recommendations.recommendations.map(r => r.format_id);
+    setSelectedFormats(ids);
+    setFormatFilter('custom');
+  };
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -238,6 +259,73 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
               <div style={{ fontSize: 11.5, color: 'var(--text2)', padding: '8px 12px', background: 'var(--amber-dim)', border: '1px solid rgba(217,119,6,0.2)', borderRadius: 'var(--radius)' }}>
                 <strong>Multiple ratios selected:</strong> {selectedRatios.length} images will be generated per format variant — {selectedRatios.map(r => `${r} (Version A + B)`).join(', ')}. Total: {totalCreatives} images. Pipeline will take approximately {Math.round(totalCreatives * 3)} minutes.
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── AI Format Recommendations ── */}
+      {!running && (loadingRecs || recommendations) && (
+        <div className="card" style={{ marginBottom: 16, borderColor: loadingRecs ? 'var(--border)' : 'var(--accent-border)', background: loadingRecs ? 'var(--surface)' : 'linear-gradient(135deg, rgba(79,70,229,0.04) 0%, var(--surface) 60%)' }}>
+          <div className="card-header" style={{ borderBottomColor: loadingRecs ? 'var(--border)' : 'var(--accent-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: loadingRecs ? 'var(--border2)' : 'var(--accent)', animation: loadingRecs ? 'pulse 1.4s infinite' : 'none' }} />
+              <div className="card-title">
+                {loadingRecs ? 'Analysing research…' : `AI Recommended for ${activeClient?.name}`}
+              </div>
+            </div>
+            {!loadingRecs && recommendations && (
+              <button className="btn btn-primary btn-sm" onClick={applyRecommended}>
+                Use Recommended →
+              </button>
+            )}
+          </div>
+          <div className="card-body" style={{ padding: loadingRecs ? '20px' : '16px 20px' }}>
+            {loadingRecs ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[1,2,3].map(i => (
+                  <div key={i} style={{ height: 52, borderRadius: 8, background: 'linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite' }} />
+                ))}
+              </div>
+            ) : (
+              <>
+                {recommendations.strategy_note && (
+                  <div style={{ marginBottom: 14, padding: '10px 14px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text2)', fontStyle: 'italic' }}>
+                    <strong style={{ color: 'var(--accent)', fontStyle: 'normal' }}>Strategy: </strong>{recommendations.strategy_note}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(recommendations.recommendations || []).map((rec, i) => (
+                    <div
+                      key={rec.format_id}
+                      onClick={() => { setFormatFilter('custom'); setSelectedFormats(prev => prev.includes(rec.format_id) ? prev.filter(f => f !== rec.format_id) : [...prev, rec.format_id]); }}
+                      style={{
+                        display: 'flex', alignItems: 'flex-start', gap: 12, padding: '11px 14px',
+                        borderRadius: 8, border: `1px solid ${selectedFormats.includes(rec.format_id) ? 'var(--accent)' : 'var(--border)'}`,
+                        background: selectedFormats.includes(rec.format_id) ? 'var(--accent-dim)' : 'var(--surface2)',
+                        cursor: 'pointer', transition: 'all 0.15s'
+                      }}
+                    >
+                      <div style={{ width: 22, height: 22, borderRadius: 6, background: i === 0 ? 'var(--accent)' : 'var(--surface3)', border: '1px solid var(--border2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)', color: i === 0 ? '#fff' : 'var(--text3)', flexShrink: 0 }}>
+                        {i + 1}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                          <span style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--text)' }}>{rec.format_name}</span>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--text3)' }}>{rec.format_id}</span>
+                          {rec.match_tag && (
+                            <span className="tag tag-accent" style={{ fontSize: 8, padding: '1px 6px' }}>{rec.match_tag}</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text2)', lineHeight: 1.45 }}>{rec.rationale}</div>
+                      </div>
+                      {selectedFormats.includes(rec.format_id) && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ flexShrink: 0, marginTop: 3 }}><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>

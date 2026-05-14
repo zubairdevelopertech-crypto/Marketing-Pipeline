@@ -308,6 +308,87 @@ router.get('/:client/download-top10', (req, res) => {
   archive.finalize();
 });
 
+// Copywriter Agent — generate structured Meta Ads Manager copy for a creative
+router.post('/:client/meta-copy/:label', async (req, res) => {
+  const { client, label } = req.params;
+  const safe = label.replace(/[^a-zA-Z0-9_.-]/g, '');
+  if (!safe) return res.status(400).json({ error: 'Invalid label' });
+
+  const cacheDir  = path.join(CLIENTS_DIR, client, 'output', 'meta_copy');
+  const cacheFile = path.join(cacheDir, `${safe}.json`);
+
+  if (fs.existsSync(cacheFile) && !req.query.refresh) {
+    try { return res.json(JSON.parse(fs.readFileSync(cacheFile, 'utf8'))); } catch (_) {}
+  }
+
+  const { getManifestAsync, getContextAsync } = require('../utils/db');
+  const { callClaudeJSON } = require('../utils/claude');
+
+  const [manifest, context] = await Promise.all([
+    getManifestAsync(client),
+    getContextAsync(client),
+  ]);
+
+  if (!context) return res.status(404).json({ error: 'No research found' });
+  const entry = (manifest || []).find(m => m.label === safe);
+  if (!entry) return res.status(404).json({ error: 'Creative not found in manifest' });
+
+  const brief = entry.brief || {};
+  const prompt = `You are a Meta Ads copywriter who writes high-converting direct response ad copy.
+
+Write structured Meta Ads Manager copy for this creative. Character limits are HARD — count every character.
+
+CREATIVE:
+Format: ${brief.format_name || entry.format_id} — Version ${entry.version}
+Hook: ${brief.hook_line || ''}
+Headline: ${brief.headline || entry.headline || ''}
+Subheadline: ${brief.subheadline || entry.subheadline || ''}
+Body copy: ${brief.body_copy || entry.body_copy || ''}
+CTA: ${brief.cta_text || entry.cta_text || ''}
+Winning argument: ${brief.winning_argument || ''}
+
+CLIENT:
+Product: ${context.product_name || ''}
+Tone: ${context.tone_of_voice || ''}
+Target: ${context.target_audience?.description || context.target_audience?.demographics || ''}
+Awareness Level: ${context.awareness_level || ''}
+Core USP: ${context.core_usp || ''}
+
+META ADS MANAGER FIELD LIMITS (HARD):
+1. Primary Text: MAX 125 chars — hook + value prop + soft CTA. Main body copy shown in feed.
+2. Headline: MAX 40 chars — bold text below image. Punchy, benefit-led.
+3. Description: MAX 30 chars — reinforces offer or adds urgency.
+
+TWO variants:
+- Variant A: Rational — numbers, proof, specific results
+- Variant B: Emotional — identity, aspiration, transformation
+
+Return ONLY valid JSON:
+{
+  "variant_a": { "primary_text": "≤125 chars", "headline": "≤40 chars", "description": "≤30 chars", "angle": "Rational" },
+  "variant_b": { "primary_text": "≤125 chars", "headline": "≤40 chars", "description": "≤30 chars", "angle": "Emotional" }
+}`;
+
+  try {
+    const data   = await callClaudeJSON(prompt, { maxTokens: 900 });
+    const result = { label: safe, ...data, generated_at: new Date().toISOString() };
+
+    ['variant_a', 'variant_b'].forEach(v => {
+      if (result[v]) {
+        result[v].primary_text = (result[v].primary_text || '').slice(0, 125);
+        result[v].headline     = (result[v].headline     || '').slice(0, 40);
+        result[v].description  = (result[v].description  || '').slice(0, 30);
+      }
+    });
+
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(cacheFile, JSON.stringify(result, null, 2));
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Delete a single creative — removes from DB, Storage, and filesystem
 router.delete('/:client/:label', async (req, res) => {
   const { client, label } = req.params;

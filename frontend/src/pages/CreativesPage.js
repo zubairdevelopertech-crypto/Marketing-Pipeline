@@ -10,6 +10,8 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
   const [retryLogs, setRetryLogs] = useState([]);
   const [retryingImages, setRetryingImages] = useState({});
   const [deleting, setDeleting] = useState({});
+  const [metaCopy, setMetaCopy] = useState({}); // { [label]: { variant_a, variant_b } | 'loading' | 'error' }
+  const [metaVariant, setMetaVariant] = useState({}); // { [label]: 'a' | 'b' }
 
   const slug = activeClient?.slug || activeClient?.name?.toLowerCase().replace(/\s+/g, '-');
 
@@ -103,6 +105,20 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
       if (ev.type === 'error') { es.close(); setRetryingImages(prev => ({ ...prev, [label]: 'failed' })); }
     };
     es.onerror = () => { es.close(); setRetryingImages(prev => ({ ...prev, [label]: 'failed' })); setTimeout(loadCreatives, 300); };
+  };
+
+  const generateMetaCopy = async (label, refresh = false) => {
+    setMetaCopy(prev => ({ ...prev, [label]: 'loading' }));
+    try {
+      const res  = await fetch(`/api/creatives/${slug}/meta-copy/${encodeURIComponent(label)}${refresh ? '?refresh=1' : ''}`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setMetaCopy(prev => ({ ...prev, [label]: data }));
+      setMetaVariant(prev => ({ ...prev, [label]: 'a' }));
+    } catch (e) {
+      setMetaCopy(prev => ({ ...prev, [label]: 'error' }));
+      addToast('Copy generation failed: ' + e.message, 'error');
+    }
   };
 
   if (!activeClient) return (
@@ -504,6 +520,89 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
                     <div className="g-copy-field" style={{ background: 'var(--amber-dim)', borderColor: 'rgba(217,119,6,0.2)' }}>
                       <div className="g-copy-label" style={{ color: 'var(--amber)' }}>Suggested Improvement</div>
                       <div className="g-copy-value">{selected.improvement}</div>
+                    </div>
+                  )}
+
+                  {/* ── Copywriter Agent — Meta Ad Copy ── */}
+                  {selected.status === 'success' && (
+                    <div style={{ marginTop: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text3)' }}>
+                          Meta Ads Manager Copy
+                        </div>
+                        {metaCopy[selected.label] && metaCopy[selected.label] !== 'loading' && metaCopy[selected.label] !== 'error' && (
+                          <button onClick={() => generateMetaCopy(selected.label, true)} style={{ background: 'none', border: 'none', fontSize: 10, color: 'var(--text3)', cursor: 'pointer', textDecoration: 'underline' }}>
+                            Regenerate
+                          </button>
+                        )}
+                      </div>
+
+                      {!metaCopy[selected.label] && (
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ width: '100%', justifyContent: 'center' }}
+                          onClick={() => generateMetaCopy(selected.label)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="10" strokeDasharray="3 3"/></svg>
+                          Generate Meta Copy (A/B)
+                        </button>
+                      )}
+
+                      {metaCopy[selected.label] === 'loading' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text3)' }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+                          Claude is writing Meta copy…
+                        </div>
+                      )}
+
+                      {metaCopy[selected.label] && metaCopy[selected.label] !== 'loading' && metaCopy[selected.label] !== 'error' && (() => {
+                        const copy   = metaCopy[selected.label];
+                        const vKey   = `variant_${metaVariant[selected.label] || 'a'}`;
+                        const v      = copy[vKey] || {};
+                        const fields = [
+                          { label: 'Primary Text', key: 'primary_text', limit: 125, desc: 'Main body copy — shown in feed' },
+                          { label: 'Headline',     key: 'headline',     limit: 40,  desc: 'Bold text below the image' },
+                          { label: 'Description',  key: 'description',  limit: 30,  desc: 'Optional supporting line' },
+                        ];
+                        return (
+                          <div>
+                            {/* A/B toggle */}
+                            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                              {['a', 'b'].map(vv => (
+                                <button key={vv} onClick={() => setMetaVariant(prev => ({ ...prev, [selected.label]: vv }))}
+                                  style={{ padding: '5px 14px', borderRadius: 20, fontSize: 11.5, cursor: 'pointer', border: '1px solid', fontWeight: (metaVariant[selected.label] || 'a') === vv ? 600 : 400, background: (metaVariant[selected.label] || 'a') === vv ? 'var(--accent)' : 'var(--surface2)', borderColor: (metaVariant[selected.label] || 'a') === vv ? 'var(--accent)' : 'var(--border)', color: (metaVariant[selected.label] || 'a') === vv ? '#fff' : 'var(--text2)' }}>
+                                  Variant {vv.toUpperCase()} — {copy[`variant_${vv}`]?.angle || ''}
+                                </button>
+                              ))}
+                            </div>
+                            {fields.map(f => {
+                              const text    = v[f.key] || '';
+                              const charLen = text.length;
+                              const over    = charLen > f.limit;
+                              return (
+                                <div key={f.key} style={{ marginBottom: 8, padding: '10px 12px', background: 'var(--surface2)', border: `1px solid ${over ? 'rgba(220,38,38,0.3)' : 'var(--border)'}`, borderRadius: 8 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                                    <div>
+                                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text3)' }}>{f.label}</span>
+                                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: 'var(--text3)', marginLeft: 8 }}>{f.desc}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ fontFamily: 'var(--mono)', fontSize: 9, color: over ? 'var(--red)' : charLen > f.limit * 0.85 ? 'var(--amber)' : 'var(--green)', fontWeight: 600 }}>
+                                        {charLen}/{f.limit}
+                                      </span>
+                                      <button onClick={() => { navigator.clipboard.writeText(text); addToast(`${f.label} copied!`, 'success'); }}
+                                        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', fontSize: 10, color: 'var(--text2)' }}>
+                                        Copy
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.45 }}>{text || <span style={{ color: 'var(--text3)', fontStyle: 'italic' }}>Not generated</span>}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
