@@ -127,6 +127,7 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
   };
 
   const fmtCount      = formatFilter === 'custom' && selectedFormats.length > 0 ? selectedFormats.length : 22;
+  const AWARENESS_PLAIN = { 1: 'Unaware', 2: 'Cold', 3: 'Warm', 4: 'Product-aware', 5: 'Hot' };
   const totalCreatives = fmtCount * 2 * selectedRatios.length; // formats × versions × ratios
 
   const elapsedSec = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
@@ -254,7 +255,7 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
           <div className="card-body">
             <div style={{ display: 'flex', gap: 8, marginBottom: formatFilter === 'custom' ? 16 : 0 }}>
               <button className={`format-mode-btn ${formatFilter === 'all' ? 'active' : ''}`} onClick={() => setFormatFilter('all')}>
-                All 20 Formats
+                All 22 Formats
               </button>
               <button className={`format-mode-btn ${formatFilter === 'custom' ? 'active' : ''}`} onClick={() => setFormatFilter('custom')}>
                 Custom Selection {selectedFormats.length > 0 ? `(${selectedFormats.length})` : ''}
@@ -274,7 +275,7 @@ export default function RunPage({ activeClient, addToast, navigate, pipeline, st
                       <div className="format-name">{fmt.name}</div>
                       <div className="format-desc" style={{ fontSize: 10, marginTop: 2 }}>{fmt.structure}</div>
                       <div className="format-awareness" style={{ marginTop: 6 }}>
-                        {fmt.awareness_fit.map(l => <span key={l} className="tag tag-muted" style={{ fontSize: 8 }}>L{l}</span>)}
+                        {fmt.awareness_fit.map(l => <span key={l} className="tag tag-muted" style={{ fontSize: 8 }}>{AWARENESS_PLAIN[l] || `L${l}`}</span>)}
                       </div>
                     </div>
                   ))}

@@ -1,24 +1,134 @@
 [
-  {"id":"FORMAT-01","name":"PAS","structure":"Problem → Agitate → Solution","awareness_fit":[2,3]},
-  {"id":"FORMAT-02","name":"BAB","structure":"Before → After → Bridge","awareness_fit":[2,3]},
-  {"id":"FORMAT-03","name":"Social Proof","structure":"Proof number → testimonials → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-04","name":"Direct Offer","structure":"Bold claim → guarantee → CTA","awareness_fit":[4,5]},
-  {"id":"FORMAT-05","name":"Listicle","structure":"X reasons/benefits → numbered list → CTA","awareness_fit":[2,3,4]},
-  {"id":"FORMAT-06","name":"Question Hook","structure":"Provocative question → answer → CTA","awareness_fit":[2,3]},
-  {"id":"FORMAT-07","name":"Comparison","structure":"Our way vs old way → we win → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-08","name":"Result First","structure":"Specific result → how → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-09","name":"Empathy","structure":"We understand → here is why → solution → CTA","awareness_fit":[1,2]},
-  {"id":"FORMAT-10","name":"Bold Statement","structure":"Product hero → benefit callouts → offer → CTA","awareness_fit":[2,3,4]},
-  {"id":"FORMAT-11","name":"Sticky Note","structure":"Authentic sticky note on product → benefit → CTA","awareness_fit":[1,2,3]},
-  {"id":"FORMAT-12","name":"iPhone Notes","structure":"iPhone Notes app screenshot → insight/list → CTA","awareness_fit":[1,2,3]},
-  {"id":"FORMAT-13","name":"iMessage","structure":"Leaked chat conversation → product discovery → CTA","awareness_fit":[1,2,3]},
-  {"id":"FORMAT-14","name":"ChatGPT Ad","structure":"AI conversation reveals insight → CTA","awareness_fit":[2,3]},
-  {"id":"FORMAT-15","name":"Us vs Them","structure":"Us vs Them split → we win every dimension → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-16","name":"Benefit Callout","structure":"X benefits headline → numbered list + product → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-17","name":"UGC Static","structure":"Authentic user in real setting → casual result → CTA","awareness_fit":[2,3]},
-  {"id":"FORMAT-18","name":"Cartoon Style","structure":"Illustrated scene → message → CTA","awareness_fit":[1,2]},
-  {"id":"FORMAT-19","name":"Lifestyle Context","structure":"Aspirational lifestyle scene → minimal copy → CTA","awareness_fit":[2,3]},
-  {"id":"FORMAT-20","name":"Carousel Ad","structure":"Hook panel → story panels → result → CTA","awareness_fit":[2,3,4]},
-  {"id":"FORMAT-21","name":"Review","structure":"Dramatic photo + floating review card → CTA","awareness_fit":[3,4]},
-  {"id":"FORMAT-22","name":"Negative/Positive","structure":"Negative now (red/dark) vs positive after (green/bright) → CTA","awareness_fit":[2,3]}
+  {
+    "id": "FORMAT-01", "name": "PAS", "structure": "Problem → Agitate → Solution", "awareness_fit": [2, 3],
+    "power_hook": "Opens with pain, earns attention before the pitch",
+    "when_to_use": "Best for cold audiences who feel a specific pain but haven't found a solution. Use when your customer has a clearly defined problem you can name and amplify. Most effective at awareness levels 2–3.",
+    "why_it_works": "Pain-first structure triggers an emotional response immediately. By agitating the problem before presenting the solution, you make the relief feel more valuable. The brain craves resolution — PAS delivers it at exactly the right moment."
+  },
+  {
+    "id": "FORMAT-02", "name": "BAB", "structure": "Before → After → Bridge", "awareness_fit": [2, 3],
+    "power_hook": "Transformation contrast stops the scroll instantly",
+    "when_to_use": "Use when you have a clear, dramatic transformation to show. Strong for products with a visible before/after — weight loss, skin improvement, business results, financial outcomes.",
+    "why_it_works": "The human brain is wired to spot contrast. Showing the before and after side-by-side forces the audience to imagine themselves in the 'after' state — and then bridges them to how to get there."
+  },
+  {
+    "id": "FORMAT-03", "name": "Social Proof", "structure": "Proof number → testimonials → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Other people's trust transfers directly to the viewer",
+    "when_to_use": "Use when your audience is warm and comparing options. Most effective once they know what you offer but haven't committed. Works best at awareness levels 3–4.",
+    "why_it_works": "People look to others to know what's safe to do — especially for purchases. Showing real numbers and verified testimonials removes risk and builds credibility faster than any claim you make yourself."
+  },
+  {
+    "id": "FORMAT-04", "name": "Direct Offer", "structure": "Bold claim → guarantee → CTA", "awareness_fit": [4, 5],
+    "power_hook": "Eliminates the final objection with a bold guarantee",
+    "when_to_use": "Use for hot, high-intent audiences who are already convinced of the category. Works best at levels 4–5 — people who need a push to act, not an education on why.",
+    "why_it_works": "Hot audiences don't need convincing — they need clarity and confidence. A direct, no-risk offer with a guarantee eliminates the last objection standing between intent and purchase."
+  },
+  {
+    "id": "FORMAT-05", "name": "Listicle", "structure": "X reasons/benefits → numbered list → CTA", "awareness_fit": [2, 3, 4],
+    "power_hook": "Numbered benefits communicate completeness at a glance",
+    "when_to_use": "Use when you have multiple strong benefits that each stand alone. Great for audiences who research before buying and appreciate seeing full specificity before committing.",
+    "why_it_works": "Lists are cognitively easy to process — the brain knows how many points remain. Numbered benefits create a sense of completeness and signal that this product covers all bases."
+  },
+  {
+    "id": "FORMAT-06", "name": "Question Hook", "structure": "Provocative question → answer → CTA", "awareness_fit": [2, 3],
+    "power_hook": "A direct question demands a mental response before scrolling",
+    "when_to_use": "Use when your audience questions conventional wisdom in your space. Works best at levels 2–3, when people haven't found the right solution yet and are open to a better approach.",
+    "why_it_works": "A question that challenges a belief the audience already holds creates a pattern interrupt. The brain must process and answer the question before it can move on — you have their attention."
+  },
+  {
+    "id": "FORMAT-07", "name": "Comparison", "structure": "Our way vs old way → we win → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Side-by-side data makes the decision obvious",
+    "when_to_use": "Use when your product has objectively measurable advantages. Effective at levels 3–4 when the audience is actively comparing alternatives before making a decision.",
+    "why_it_works": "Structured comparisons do the decision-making work for the viewer. By framing the data in your favor, you remove ambiguity and make your product the obvious logical choice."
+  },
+  {
+    "id": "FORMAT-08", "name": "Result First", "structure": "Specific result → how → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Specific results create instant credibility — features don't",
+    "when_to_use": "Use when you have a specific, credible result to lead with. Best for products with measurable outcomes — revenue, weight loss, skin clarity, time saved. Works at levels 3–4.",
+    "why_it_works": "Leading with a concrete result triggers immediate credibility assessment. If the number is specific and believable, it bypasses skepticism faster than any feature or benefit headline."
+  },
+  {
+    "id": "FORMAT-09", "name": "Empathy", "structure": "We understand → here is why → solution → CTA", "awareness_fit": [1, 2],
+    "power_hook": "Feeling understood is the prerequisite for being persuaded",
+    "when_to_use": "Use for very cold audiences who feel misunderstood or have tried alternatives without success. Especially effective for health, wellness, and personal development categories.",
+    "why_it_works": "People buy from those who understand them. When someone feels seen and heard, they lower their guard. Empathy earns the emotional permission to make a recommendation — without it, you're just another ad."
+  },
+  {
+    "id": "FORMAT-10", "name": "Bold Statement", "structure": "Product hero → benefit callouts → offer → CTA", "awareness_fit": [2, 3, 4],
+    "power_hook": "Product as the hero with benefits radiating outward",
+    "when_to_use": "Use when your product has a clear hero feature or visible differentiator best shown visually. Works well for physical products across levels 2–4.",
+    "why_it_works": "The product becomes the answer. By placing benefits around it like satellites, you communicate comprehensiveness without requiring the viewer to read a paragraph. Visual authority — no explanation needed."
+  },
+  {
+    "id": "FORMAT-11", "name": "Sticky Note", "structure": "Authentic sticky note on product → benefit → CTA", "awareness_fit": [1, 2, 3],
+    "power_hook": "Looks personal and unpolished — the opposite of an ad",
+    "when_to_use": "Use when you want to appear native and organic in a feed. Effective for building trust with skeptical cold audiences at levels 1–3 who are sensitive to advertising.",
+    "why_it_works": "The brain dismisses polished ads on sight. A sticky note reads as a personal recommendation — something real, not produced. Authenticity lowers the guard before the message lands."
+  },
+  {
+    "id": "FORMAT-12", "name": "iPhone Notes", "structure": "iPhone Notes app screenshot → insight/list → CTA", "awareness_fit": [1, 2, 3],
+    "power_hook": "Screenshots feel shared by a friend, not sold by a brand",
+    "when_to_use": "Use for audiences that trust peer-to-peer communication over marketing. Particularly effective for educational or informational products at levels 1–3.",
+    "why_it_works": "Screenshots of phone interfaces feel like forwarded content — something a friend shared. The informal format creates the illusion of an insider tip, not a pitch."
+  },
+  {
+    "id": "FORMAT-13", "name": "iMessage", "structure": "Leaked chat conversation → product discovery → CTA", "awareness_fit": [1, 2, 3],
+    "power_hook": "A conversation you're not in feels more believable than an ad",
+    "when_to_use": "Use when your best marketing comes from how customers recommend you to each other. Strong for products with word-of-mouth potential or categories where social proof travels fast.",
+    "why_it_works": "Overhearing a conversation feels more authentic than being advertised to. The reader becomes a voyeur of an organic recommendation — and organic recommendation is the most trusted form of social proof."
+  },
+  {
+    "id": "FORMAT-14", "name": "ChatGPT Ad", "structure": "AI conversation reveals insight → CTA", "awareness_fit": [2, 3],
+    "power_hook": "Frames your product as the AI-recommended choice",
+    "when_to_use": "Use with tech-savvy or business audiences who use AI tools regularly. Creates the perception that an objective third party has evaluated your product category.",
+    "why_it_works": "AI is perceived as neutral and authoritative. When ChatGPT appears to recommend a solution, the audience treats it like expert analysis rather than advertising — skepticism drops."
+  },
+  {
+    "id": "FORMAT-15", "name": "Us vs Them", "structure": "Us vs Them split → we win every dimension → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Binary framing forces a choice — and your side always wins",
+    "when_to_use": "Use when you are clearly superior on specific, quantifiable dimensions. Works for warm audiences at levels 3–4 who are actively comparing options before deciding.",
+    "why_it_works": "Binary thinking simplifies decisions. By splitting the visual into us-vs-them with clear data, you eliminate the middle ground and force the audience into a clear preference — yours."
+  },
+  {
+    "id": "FORMAT-16", "name": "Benefit Callout", "structure": "X benefits headline → numbered list + product → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Cumulative benefits build an irresistible value case",
+    "when_to_use": "Use for warm audiences in research mode who need to see all the reasons before committing. Best at levels 3–4 when the audience is evaluating comprehensively.",
+    "why_it_works": "Numbered benefits with specifics create a sense of thoroughness. Each benefit adds cumulative weight — by the time they reach the last point, the value case feels complete and overwhelming."
+  },
+  {
+    "id": "FORMAT-17", "name": "UGC Static", "structure": "Authentic user in real setting → casual result → CTA", "awareness_fit": [2, 3],
+    "power_hook": "Real people in real settings kill ad blindness instantly",
+    "when_to_use": "Use when you want to stop the scroll with authenticity. Highly effective for beauty, health, and lifestyle categories where peer validation drives purchase decisions.",
+    "why_it_works": "User-generated content bypasses ad blindness entirely. A real person in a real environment is the visual equivalent of a trusted friend — not a marketing department."
+  },
+  {
+    "id": "FORMAT-18", "name": "Cartoon Style", "structure": "Illustrated scene → message → CTA", "awareness_fit": [1, 2],
+    "power_hook": "Illustration stops the scroll — every other ad is a photograph",
+    "when_to_use": "Use for cold audiences who respond to playfulness rather than professionalism. Effective for brands targeting younger demographics or concepts that are difficult to photograph.",
+    "why_it_works": "Illustration stands out in a feed of photography. The style signals creativity and personality — and when the concept has humor or warmth, that positive emotion transfers directly to the brand."
+  },
+  {
+    "id": "FORMAT-19", "name": "Lifestyle Context", "structure": "Aspirational lifestyle scene → minimal copy → CTA", "awareness_fit": [2, 3],
+    "power_hook": "The lifestyle sells itself — minimal copy keeps the dream intact",
+    "when_to_use": "Use for aspirational products where the context of use is as powerful as the product itself. Best at levels 2–3 when the desired outcome or identity is the primary purchase driver.",
+    "why_it_works": "Aspirational imagery sells the identity, not the product. The viewer doesn't want the watch — they want to be the person wearing it. Minimal copy keeps the aspiration pure and uninterrupted."
+  },
+  {
+    "id": "FORMAT-20", "name": "Carousel Ad", "structure": "Hook panel → story panels → result → CTA", "awareness_fit": [2, 3, 4],
+    "power_hook": "Sequential narrative rewards attention — and builds to a click",
+    "when_to_use": "Use when your story requires more than one frame. Effective for multi-step transformations, product ranges, or educational content that rewards the audience for spending time.",
+    "why_it_works": "Sequential storytelling creates micro-commitment — each card reveals more, encouraging the viewer to keep swiping. By the final card, they have invested enough attention to click through."
+  },
+  {
+    "id": "FORMAT-21", "name": "Review", "structure": "Dramatic photo + floating review card → CTA", "awareness_fit": [3, 4],
+    "power_hook": "Dramatic visual + specific testimonial = persuasion at full power",
+    "when_to_use": "Use when you have strong testimonials with specificity — names, outcomes, real numbers. Works at levels 3–4 where social proof is the final conversion lever before purchase.",
+    "why_it_works": "A dramatic visual catches the eye; a floating review card catches the mind. The contrast between an attention-grabbing scene and a credible, specific testimonial creates maximum persuasion density."
+  },
+  {
+    "id": "FORMAT-22", "name": "Negative/Positive", "structure": "Negative now (red/dark) vs positive after (green/bright) → CTA", "awareness_fit": [2, 3],
+    "power_hook": "Red and green communicate the transformation before text is read",
+    "when_to_use": "Use when both the pain of the current situation and the pleasure of the outcome are emotionally strong. Works best at levels 2–3 for audiences who have already tried alternatives.",
+    "why_it_works": "Color psychology is immediate — red reads as danger and negativity, green reads as safety and growth. The split communicates the entire transformation before the viewer processes a single word."
+  }
 ]

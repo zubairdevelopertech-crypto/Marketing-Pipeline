@@ -2,6 +2,15 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import FORMATS from '../data/formats.json';
 import { getRefUrls } from '../data/formatRefs';
 
+const AWARENESS_SHORT = { 1: 'Cold', 2: 'Cold', 3: 'Warm', 4: 'Warm', 5: 'Hot' };
+const AWARENESS_DESC  = {
+  1: 'Unaware — doesn\'t know they have a problem',
+  2: 'Problem Aware — knows the problem, not the solution',
+  3: 'Solution Aware — knows solutions exist, not yours',
+  4: 'Product Aware — knows your product, not yet convinced',
+  5: 'Most Aware — ready to buy, needs the right offer',
+};
+
 // ── FormatModal — shows reference images for any format ─────────────────────
 function FormatModal({ fmt, refs, onClose, onDelete }) {
   const [lightbox, setLightbox] = useState(null);
@@ -52,7 +61,9 @@ function FormatModal({ fmt, refs, onClose, onDelete }) {
           <div style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 10 }}>{fmt.structure}</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {(fmt.awareness_fit || []).map(l => (
-              <span key={l} className="tag tag-muted">Awareness Level {l}</span>
+              <span key={l} className="tag tag-muted" title={AWARENESS_DESC[l]} style={{ cursor: 'help' }}>
+                {AWARENESS_SHORT[l]} audience — L{l}
+              </span>
             ))}
             {fmt.custom && onDelete && (
               <button
@@ -62,6 +73,24 @@ function FormatModal({ fmt, refs, onClose, onDelete }) {
             )}
           </div>
         </div>
+
+        {/* When to use / Why it works */}
+        {(fmt.when_to_use || fmt.why_it_works) && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            {fmt.when_to_use && (
+              <div style={{ padding: '12px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderLeft: '3px solid var(--accent)', borderRadius: 8 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 6 }}>When to use</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.55 }}>{fmt.when_to_use}</div>
+              </div>
+            )}
+            {fmt.why_it_works && (
+              <div style={{ padding: '12px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderLeft: '3px solid var(--green)', borderRadius: 8 }}>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--green)', marginBottom: 6 }}>Why it works</div>
+                <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.55 }}>{fmt.why_it_works}</div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ borderTop: '1px solid var(--border)', marginBottom: 20 }} />
         <div style={{ marginBottom: 12, fontSize: 11, fontFamily: 'var(--mono)', color: 'var(--text3)', letterSpacing: 1, textTransform: 'uppercase' }}>
@@ -448,9 +477,16 @@ export function FormatsPage() {
               <div className="format-id">{fmt.id}</div>
               <div className="format-name">{fmt.name}</div>
               <div className="format-desc">{fmt.structure}</div>
+              {fmt.power_hook && (
+                <div style={{ marginTop: 5, fontSize: 10.5, color: 'var(--accent)', fontStyle: 'italic', lineHeight: 1.4 }}>
+                  {fmt.power_hook}
+                </div>
+              )}
               <div className="format-awareness" style={{ marginTop: 8, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                 {(fmt.awareness_fit || []).map(l => (
-                  <span key={l} className="tag tag-muted">Level {l}</span>
+                  <span key={l} className="tag tag-muted" title={AWARENESS_DESC[l]}>
+                    {AWARENESS_SHORT[l] || `L${l}`}
+                  </span>
                 ))}
                 <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text3)' }}>View →</span>
               </div>

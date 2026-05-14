@@ -151,11 +151,13 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
+            {top10.length > 0 && (
+              <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Export Top {top10.length}
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => download('download')}>Download All</button>
-            {top10.length > 0 && <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export Top {top10.length}
-            </button>}
           </div>
         </div>
       </div>
@@ -216,6 +218,27 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
           </button>
         </div>
       </div>
+
+      {/* Guided next step */}
+      {top10.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20,
+          padding: '14px 18px', borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(79,70,229,0.07) 0%, rgba(124,58,237,0.04) 100%)',
+          border: '1px solid var(--accent-border)'
+        }}>
+          <div style={{ fontSize: 22 }}>🚀</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>Your top ads are ready</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+              Export the top {top10.length} creatives as a ZIP and upload to Meta Ads Manager — or run the Feedback Loop after 5–7 days of results.
+            </div>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>
+            Export Top {top10.length} →
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="g-filters">
@@ -383,24 +406,69 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
                   )}
                   {/* Scores */}
                   {(selected.score || selected.ctr_tier) && (
-                    <div className="g-modal-scores">
-                      {selected.score && (
-                        <div className="g-score-box">
-                          <div className="g-score-label">AI Score</div>
-                          <div className="g-score-value" style={{ color: selected.score >= 80 ? 'var(--green)' : selected.score >= 60 ? 'var(--amber)' : 'var(--red)' }}>
-                            {selected.score}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)' }}>/100</span>
+                    <>
+                      <div className="g-modal-scores">
+                        {selected.score && (
+                          <div className="g-score-box">
+                            <div className="g-score-label">AI Score</div>
+                            <div className="g-score-value" style={{ color: selected.score >= 80 ? 'var(--green)' : selected.score >= 60 ? 'var(--amber)' : 'var(--red)' }}>
+                              {selected.score}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text3)' }}>/100</span>
+                            </div>
                           </div>
+                        )}
+                        {selected.ctr_tier && (
+                          <div className="g-score-box" style={{ position: 'relative' }}>
+                            <div className="g-score-label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              Predicted CTR
+                              <span title="High = estimated CTR above 1.5% for cold audiences. Medium = 0.8–1.5%. Low = below 0.8%. Based on format, hook strength, and copy clarity." style={{ cursor: 'help', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 13, height: 13, borderRadius: '50%', background: 'var(--surface3)', border: '1px solid var(--border2)', fontSize: 8, color: 'var(--text3)', fontFamily: 'var(--sans)', fontWeight: 700 }}>?</span>
+                            </div>
+                            <div className="g-score-value" style={{ fontSize: 16, color: selected.ctr_tier === 'high' ? 'var(--green)' : selected.ctr_tier === 'medium' ? 'var(--amber)' : 'var(--text)' }}>
+                              {selected.ctr_tier.charAt(0).toUpperCase() + selected.ctr_tier.slice(1)}
+                            </div>
+                            <div style={{ fontSize: 9, color: 'var(--text3)', fontFamily: 'var(--mono)', marginTop: 2 }}>
+                              {selected.ctr_tier === 'high' ? '>1.5%' : selected.ctr_tier === 'medium' ? '0.8–1.5%' : '<0.8%'} est.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 7-criteria breakdown */}
+                      {selected.criteria_scores && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text3)', marginBottom: 8 }}>Score Breakdown</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {[
+                              { key: 'hook_strength',       label: 'Hook Strength' },
+                              { key: 'argument_clarity',    label: 'Argument Clarity' },
+                              { key: 'emotional_resonance', label: 'Emotional Resonance' },
+                              { key: 'belief_alignment',    label: 'Belief Alignment' },
+                              { key: 'cta_strength',        label: 'CTA Strength' },
+                              { key: 'brand_alignment',     label: 'Brand Alignment' },
+                              { key: 'meta_compliance',     label: 'Meta Compliance' },
+                            ].map(({ key, label }) => {
+                              const val = selected.criteria_scores[key];
+                              if (val == null) return null;
+                              const pct = (val / 10) * 100;
+                              const col = val >= 8 ? 'var(--green)' : val >= 6 ? 'var(--accent)' : val >= 4 ? 'var(--amber)' : 'var(--red)';
+                              return (
+                                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                  <div style={{ width: 120, fontSize: 10, color: 'var(--text2)', flexShrink: 0 }}>{label}</div>
+                                  <div style={{ flex: 1, height: 5, background: 'var(--surface3)', borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ width: `${pct}%`, height: '100%', background: col, borderRadius: 3, transition: 'width 0.6s ease' }} />
+                                  </div>
+                                  <div style={{ fontFamily: 'var(--mono)', fontSize: 10, fontWeight: 700, color: col, width: 22, textAlign: 'right', flexShrink: 0 }}>{val}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {selected.hook_note && (
+                            <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--accent-dim)', border: '1px solid var(--accent-border)', borderRadius: 6, fontSize: 11.5, color: 'var(--text2)', fontStyle: 'italic' }}>
+                              {selected.hook_note}
+                            </div>
+                          )}
                         </div>
                       )}
-                      {selected.ctr_tier && (
-                        <div className="g-score-box">
-                          <div className="g-score-label">Predicted CTR</div>
-                          <div className="g-score-value" style={{ fontSize: 16, color: selected.ctr_tier === 'high' ? 'var(--green)' : 'var(--text)' }}>
-                            {selected.ctr_tier.charAt(0).toUpperCase() + selected.ctr_tier.slice(1)}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    </>
                   )}
 
                   {/* Copy fields */}

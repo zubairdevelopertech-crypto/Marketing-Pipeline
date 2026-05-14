@@ -134,32 +134,28 @@ export default function UploadPage({ activeClient, addToast, navigate }) {
   return (
     <div>
       <div className="page-header">
-        <div className="page-title">Upload research documents</div>
-        <div className="page-sub">Step 2 of 3 — after this, open Run Pipeline</div>
+        <div className="page-title">Upload Research Documents</div>
+        <div className="page-sub">Step 2 of 3 — upload your research files, then run the pipeline</div>
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-header">
           <div className="card-title">What to upload</div>
         </div>
-        <div className="card-body" style={{ fontSize: 14, color: 'var(--text2)', lineHeight: 1.55 }}>
+        <div className="card-body" style={{ fontSize: 13.5, color: 'var(--text2)', lineHeight: 1.6 }}>
           <p style={{ marginTop: 0 }}>
-            Upload <strong>Word (.docx)</strong>, <strong>PDF</strong>, or plain text files that describe the offer, market, and customer.
-            The pipeline reads <strong>all</strong> uploaded files together to build a master context, then writes copy and images.
+            Upload <strong>Word (.docx)</strong>, <strong>PDF</strong>, or plain text files containing your market research, audience profile, offer details, and customer insights.
+            The pipeline reads all uploaded files together to build a strategic brief, then writes copy and generates images.
           </p>
           <p style={{ marginBottom: 0 }}>
-            <strong>Typical set (names vary):</strong> market research, avatar / ICP sheet, offer brief, beliefs / objections,
-            and customer voice or verbatim quotes. You do not need exactly five files — include everything material; more context usually helps.
+            <strong>Recommended files:</strong> Market Analysis, Target Audience Profile, Offer & Positioning, Necessary Beliefs, and Customer Voice research.
+            You don't need exactly five — include everything relevant. More context produces better creatives.
           </p>
         </div>
       </div>
 
       <div className="callout callout-green" style={{ marginBottom: 20 }}>
-        <strong>✅ After upload</strong>
-        <div style={{ marginTop: 6, fontSize: 13 }}>
-          Files are stored for this client. When you are ready, go to <strong>Run Pipeline</strong> (step 3). Research takes about 30–90 seconds;
-          full pipeline with images can take several minutes. You can leave the page — progress continues in the background.
-        </div>
+        <strong>After upload:</strong> go to <strong>Run Pipeline</strong> (step 3). Research takes about 30–90 seconds; the full pipeline with images takes several minutes. You can leave the page — progress continues automatically in the background.
       </div>
 
       {existingDocs.length > 0 && (

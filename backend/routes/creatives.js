@@ -80,6 +80,8 @@ router.get('/:client', async (req, res) => {
         m.strengths = scoreMap[m.label].strengths;
         m.weakness = scoreMap[m.label].weakness;
         m.improvement = scoreMap[m.label].improvement;
+        m.criteria_scores = scoreMap[m.label].scores || null;
+        m.hook_note = scoreMap[m.label].hook_note || null;
       }
       m.is_top10 = top10.includes(m.label);
 
