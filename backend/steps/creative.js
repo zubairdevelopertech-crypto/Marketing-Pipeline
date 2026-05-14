@@ -1,6 +1,6 @@
 const { callClaudeJSON } = require('../utils/claude');
 const { generateImage } = require('../utils/gemini');
-const { saveManifest, uploadImageToStorage, getBrandAssetPaths } = require('../utils/db');
+const { saveManifest, uploadImageToStorage, getBrandAssetPaths, getManifestAsync } = require('../utils/db');
 const fs = require('fs');
 const path = require('path');
 
@@ -210,10 +210,21 @@ async function runCreative(clientDir, briefs, context, onProgress, skipImages = 
   if (!validRatios.length) validRatios.push('4:5');
 
   // ── CRITICAL: Load existing manifest so we never lose previously generated images ──
-  // Each run MERGES results — new generations update their label, all others are preserved
+  // Filesystem first — if missing (cloud server restart), fall back to Supabase DB.
+  // This guarantees previously generated images are always preserved across runs.
   let existingManifest = [];
   if (fs.existsSync(manifestPath)) {
     try { existingManifest = JSON.parse(fs.readFileSync(manifestPath)); } catch (_) {}
+  }
+  if (existingManifest.length === 0) {
+    // Local file missing or empty — load from DB so we don't lose cloud-stored images
+    try {
+      const dbManifest = await getManifestAsync(clientSlug);
+      if (dbManifest?.length) {
+        existingManifest = dbManifest;
+        onProgress({ step: 'creative', status: 'running', message: `📂 Loaded ${dbManifest.length} previously generated creatives from database — merging with new run` });
+      }
+    } catch (_) {}
   }
   const mergedResults = [...existingManifest]; // start with ALL existing creatives
 
