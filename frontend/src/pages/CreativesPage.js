@@ -180,20 +180,26 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
         </div>
       )}
 
-      {/* Top 10 banner */}
+      {/* Top-rated info banner — info only, no button */}
       {top10.length > 0 && (
         <div className="g-alert g-alert-success" style={{ marginBottom: 16 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>Top {top10.length} ready for Meta Ads</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 2 }}>{top10.slice(0, 5).join(' · ')}{top10.length > 5 ? ` · +${top10.length - 5} more` : ''}</div>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>
+              Top {top10.length} selected for Meta Ads
+              <span style={{ fontWeight: 400, color: 'var(--text3)', marginLeft: 8, fontSize: 11 }}>
+                — click "Export Top {top10.length}" above to download
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--text2)', marginTop: 3 }}>
+              {top10.slice(0, 5).join(' · ')}{top10.length > 5 ? ` · +${top10.length - 5} more` : ''}
+            </div>
           </div>
-          <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>Export ZIP</button>
         </div>
       )}
 
-      {/* Export section */}
+      {/* Research downloads — clearly labelled as separate from image export */}
       <div className="export-card" style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Downloads</div>
+        <div style={{ fontSize: 10, fontFamily: 'var(--mono)', color: 'var(--text3)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 }}>Research & Report Downloads</div>
         <div className="export-row">
           {[
             { label: 'Market Context', ep: 'context', desc: 'Research & audience insights (JSON)' },
@@ -219,24 +225,18 @@ export default function CreativesPage({ activeClient, addToast, navigate }) {
         </div>
       </div>
 
-      {/* Guided next step */}
+      {/* Next step — no duplicate export, just guidance */}
       {top10.length > 0 && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20,
-          padding: '14px 18px', borderRadius: 10,
-          background: 'linear-gradient(135deg, rgba(79,70,229,0.07) 0%, rgba(124,58,237,0.04) 100%)',
-          border: '1px solid var(--accent-border)'
+          display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20,
+          padding: '12px 16px', borderRadius: 10,
+          background: 'rgba(79,70,229,0.04)', border: '1px solid var(--accent-border)',
+          fontSize: 12.5, color: 'var(--text2)'
         }}>
-          <div style={{ fontSize: 22 }}>🚀</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>Your top ads are ready</div>
-            <div style={{ fontSize: 12, color: 'var(--text2)' }}>
-              Export the top {top10.length} creatives as a ZIP and upload to Meta Ads Manager — or run the Feedback Loop after 5–7 days of results.
-            </div>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={() => download('download-top10')}>
-            Export Top {top10.length} →
-          </button>
+          <span style={{ fontSize: 16 }}>💡</span>
+          <span>
+            <strong style={{ color: 'var(--text)' }}>Next step:</strong> export your top {top10.length} ads, upload to Meta Ads Manager, then return here after 5–7 days to run the <button onClick={() => navigate('feedback')} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: 600, cursor: 'pointer', padding: 0, fontSize: 12.5 }}>Feedback Loop</button> for performance-based improvements.
+          </span>
         </div>
       )}
 
